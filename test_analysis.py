@@ -291,3 +291,220 @@ def test_trial_interval_classification_and_no_false_significance():
     assert '-0.0019' in format_interval(t_cautious['diff_result']['ci95'], '°C/decade')
     assert 'not mean' in t_cautious['interpretation'].lower()
 
+
+def test_grid_cell_metadata_and_approximate_footprint():
+    from analysis import (
+        MERRA2_LAT_RES_DEG,
+        MERRA2_LON_RES_DEG,
+        extract_grid_metadata,
+        source_sha256,
+    )
+
+    casa = _load_snapshot('Casablanca')
+    marr = _load_snapshot('Marrakech')
+    results_index = json.loads((Path(__file__).parent / 'data' / 'results.json').read_text())
+    expected_hashes = {row['location']: row['sha256'] for row in results_index}
+
+    meta_c = extract_grid_metadata('Casablanca', casa, *LOCATIONS['Casablanca'])
+    meta_m = extract_grid_metadata('Marrakech', marr, *LOCATIONS['Marrakech'])
+
+    # NASA POWER point JSON does not publish exact MERRA-2 polygon vertices
+    assert meta_c['geometry_type'] == 'Point'
+    assert meta_c['exact_footprint_available'] is False
+    assert 'approximate' in meta_c['footprint_label'].lower()
+    assert meta_c['grid_elevation_m'] == pytest.approx(152.91, abs=1e-2)
+    assert meta_m['grid_elevation_m'] == pytest.approx(836.94, abs=1e-2)
+    assert 'no local weather-station' in meta_m['elevation_caveat'].lower()
+
+    # Approximate resolution box matches documented 0.5° x 0.625° MERRA-2 spacing
+    bounds_c = meta_c['footprint']['bounds']
+    assert bounds_c['north'] - bounds_c['south'] == pytest.approx(MERRA2_LAT_RES_DEG)
+    assert bounds_c['east'] - bounds_c['west'] == pytest.approx(MERRA2_LON_RES_DEG)
+    assert meta_c['sources'] == ['MERRA2']
+
+    # SHA-256 matches unaltered NASA snapshots recorded in data/results.json
+    assert source_sha256('Casablanca', casa)['sha256'] == expected_hashes['Casablanca']
+    assert source_sha256('Marrakech', marr)['sha256'] == expected_hashes['Marrakech']
+
+
+def test_scientific_evidence_brief_one_page_pdf():
+    import fitz
+    from brief_pdf import build_scientific_evidence_brief_pdf
+
+    casa = _load_snapshot('Casablanca')
+    marr = _load_snapshot('Marrakech')
+    rabat = _load_snapshot('Rabat')
+
+    t_pos = climate_trial('Casablanca', casa, 'Marrakech', marr, parameter='T2M', start=1991, end=2025)
+    pdf_t2m = build_scientific_evidence_brief_pdf(
+        question='Is Marrakech warming faster than Casablanca?',
+        parameter='T2M',
+        start=1991,
+        end=2025,
+        loc_a='Casablanca',
+        lat_a=LOCATIONS['Casablanca'][0],
+        lon_a=LOCATIONS['Casablanca'][1],
+        data_a=casa,
+        loc_b='Marrakech',
+        lat_b=LOCATIONS['Marrakech'][0],
+        lon_b=LOCATIONS['Marrakech'][1],
+        data_b=marr,
+        trial=t_pos,
+        interval_mode='cautious',
+        generated_utc='2026-11-15T20:00:00Z',
+    )
+    doc = fitz.open(stream=pdf_t2m, filetype='pdf')
+    assert len(doc) == 1
+    txt = doc[0].get_text()
+    assert 'Is Marrakech warming faster than Casablanca?' in txt
+    assert '+0.26' in txt
+    assert 'Evidence of a positive trend difference' in txt
+    assert '6fa83df04114f52cdefc7abc239f89a941388204507a155e7733244ad24df6e0' in txt
+    assert '6ee4ecd6f58d3be93f8694bd46113f3c9d8a1b45bb75cf61f5bee0d2439d6252' in txt
+    assert 'Hafida Belayd' in txt
+    assert '2026-11-15T20:00:00Z' in txt
+    assert 'NOT a Type-I error' in txt
+
+    # Dynamic change check: Rabat vs Casa inconclusive & PRECTOTCORR produce distinct verdicts & values
+    t_inc = climate_trial('Casablanca', casa, 'Rabat', rabat, parameter='T2M', start=1991, end=2025)
+    pdf_inc = build_scientific_evidence_brief_pdf(
+        question='Is Rabat warming faster than Casablanca?',
+        parameter='T2M',
+        start=1991,
+        end=2025,
+        loc_a='Casablanca',
+        lat_a=LOCATIONS['Casablanca'][0],
+        lon_a=LOCATIONS['Casablanca'][1],
+        data_a=casa,
+        loc_b='Rabat',
+        lat_b=LOCATIONS['Rabat'][0],
+        lon_b=LOCATIONS['Rabat'][1],
+        data_b=rabat,
+        trial=t_inc,
+    )
+    doc_inc = fitz.open(stream=pdf_inc, filetype='pdf')
+    assert len(doc_inc) == 1
+    txt_inc = doc_inc[0].get_text()
+    assert 'Inconclusive result' in txt_inc
+    assert '9bb96b521ca695f8c6f0c26b24106299833bb4005352ac246b570e3ac4846d5f' in txt_inc
+
+
+def test_uncertainty_lens_standard_errors_and_raw_hac_ratio():
+    from analysis import evaluate_site, uncertainty_lens_summary
+
+    casa = _load_snapshot('Casablanca')
+    marr = _load_snapshot('Marrakech')
+
+    # Casablanca T2M: SE_HAC > SE_OLS -> ratio > 1 and cautious matches HAC
+    ev_c_conv = evaluate_site('Casablanca', casa, 'T2M', 1991, 2025, interval_mode='conventional')
+    ev_c_hac = evaluate_site('Casablanca', casa, 'T2M', 1991, 2025, interval_mode='hac')
+    ev_c_caut = evaluate_site('Casablanca', casa, 'T2M', 1991, 2025, interval_mode='cautious')
+
+    ul_c = uncertainty_lens_summary(ev_c_caut['result'])
+    assert ul_c['se_hac_decade'] > ul_c['se_ols_decade']
+    assert ul_c['hac_to_ols_se_ratio'] == pytest.approx(ul_c['se_hac_decade'] / ul_c['se_ols_decade'], rel=1e-9)
+    assert ul_c['hac_to_ols_se_ratio'] == pytest.approx(1.5160, abs=1e-3)
+    assert ul_c['se_cautious_decade'] == pytest.approx(ul_c['se_hac_decade'])
+    assert ul_c['cautious_floored_by_ols'] is False
+    assert ev_c_conv['active_excludes_zero'] is True
+    assert ev_c_hac['active_excludes_zero'] is False
+    assert ev_c_caut['active_excludes_zero'] is False
+    assert 'not a type-i error' in ul_c['ratio_note'].lower()
+
+    # Marrakech PRECTOTCORR: SE_HAC < SE_OLS -> ratio < 1, while cautious max() preserves SE_OLS
+    ev_m_rain = evaluate_site('Marrakech', marr, 'PRECTOTCORR', 1991, 2025, interval_mode='cautious')
+    ev_m_rain_hac = evaluate_site('Marrakech', marr, 'PRECTOTCORR', 1991, 2025, interval_mode='hac')
+    ul_m = uncertainty_lens_summary(ev_m_rain['result'])
+    assert ul_m['se_hac_decade'] < ul_m['se_ols_decade']
+    assert ul_m['hac_to_ols_se_ratio'] < 1.0
+    assert ul_m['cautious_floored_by_ols'] is True
+    assert ul_m['se_cautious_decade'] == pytest.approx(ul_m['se_ols_decade'])
+    assert ev_m_rain['active_ci'] == pytest.approx(ev_m_rain['result']['ci95'])
+    assert ev_m_rain_hac['active_ci'] == pytest.approx(ev_m_rain['result']['hac_ci95'])
+    assert ev_m_rain_hac['active_ci'][1] - ev_m_rain_hac['active_ci'][0] < ev_m_rain['active_ci'][1] - ev_m_rain['active_ci'][0]
+
+
+
+
+
+
+def test_compare_and_single_brief_modes_and_raw_hac_lens():
+    """Verify raw HAC mode vs cautious safeguard and Compare/Single 1-page PDF briefs."""
+    import json
+    from pathlib import Path
+    import fitz
+    from analysis import (
+        compare_locations,
+        evaluate_site,
+        source_sha256,
+        uncertainty_lens_summary,
+    )
+    from brief_pdf import build_scientific_evidence_brief_pdf
+
+    data_dir = Path(__file__).parent / 'data'
+    casa = json.loads((data_dir / 'casablanca.json').read_text())
+    mar = json.loads((data_dir / 'marrakech.json').read_text())
+
+    # On Marrakech PRECTOTCORR (1991-2025), raw SE_HAC < SE_OLS so cautious floors at SE_OLS while 'hac' uses raw SE_HAC.
+    ev_cau = evaluate_site('Marrakech', mar, 'PRECTOTCORR', 1991, 2025, interval_mode='cautious')
+    ev_hac = evaluate_site('Marrakech', mar, 'PRECTOTCORR', 1991, 2025, interval_mode='hac')
+    lens = uncertainty_lens_summary(ev_cau['result'])
+    assert lens is not None
+    assert lens['cautious_floored_by_ols'] is True
+    assert lens['hac_to_ols_se_ratio'] < 1.0
+    assert ev_hac['active_ci'] == lens['hac_ci95']
+    assert ev_cau['active_ci'] == lens['cautious_ci95']
+    assert ev_hac['active_ci'] != ev_cau['active_ci']
+
+    comp = compare_locations('Casablanca', casa, 'Marrakech', mar, 'T2M', 1991, 2025, interval_mode='hac')
+    assert comp['interval_mode'] == 'hac'
+
+    pdf_comp = build_scientific_evidence_brief_pdf(
+        question='How do temperature trends compare between Casablanca and Marrakech (1991-2025)?',
+        parameter='T2M',
+        start=1991,
+        end=2025,
+        loc_a='Casablanca',
+        lat_a=33.5731,
+        lon_a=-7.5898,
+        data_a=casa,
+        loc_b='Marrakech',
+        lat_b=31.6295,
+        lon_b=-7.9811,
+        data_b=mar,
+        comp=comp,
+        interval_mode='hac',
+    )
+    doc_comp = fitz.open(stream=pdf_comp, filetype='pdf')
+    assert doc_comp.page_count == 1
+    txt_comp = doc_comp[0].get_text()
+    assert source_sha256('Casablanca', casa)['sha256'] in txt_comp
+    assert source_sha256('Marrakech', mar)['sha256'] in txt_comp
+    assert 'SE_HAC' in txt_comp
+
+    pdf_single = build_scientific_evidence_brief_pdf(
+        question='Is annual precipitation changing at Marrakech (1991-2025)?',
+        parameter='PRECTOTCORR',
+        start=1991,
+        end=2025,
+        loc_a='Marrakech',
+        lat_a=31.6295,
+        lon_a=-7.9811,
+        data_a=mar,
+        single_site=ev_hac,
+        interval_mode='hac',
+    )
+    doc_single = fitz.open(stream=pdf_single, filetype='pdf')
+    assert doc_single.page_count == 1
+    txt_single = doc_single[0].get_text()
+    assert 'Marrakech' in txt_single
+    assert source_sha256('Marrakech', mar)['sha256'] in txt_single
+
+    # Modified / live payload for a reference city name must hash the live payload, NOT the bundled file.
+    live_copy = json.loads(json.dumps(casa))
+    live_copy['_earthpulse'] = {'request_url': 'https://power.larc.nasa.gov/api/mock?start=1981&end=2025'}
+    live_sha = source_sha256('Casablanca', live_copy)
+    bundled_sha = source_sha256('Casablanca', casa)
+    assert 'Unaltered bundled' in bundled_sha['scope']
+    assert 'Live NASA API' in live_sha['scope']
+    assert live_sha['sha256'] != bundled_sha['sha256']

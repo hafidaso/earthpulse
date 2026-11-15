@@ -1,6 +1,10 @@
-"""EarthPulse analysis. AI-assisted implementation by OpenAI Codex; V2 comparison extensions assisted by Google Gemini (Argon). NASA data unaltered."""
+"""EarthPulse analysis. NASA POWER data unaltered; exploratory time-series and paired-difference inference."""
 import calendar
 from datetime import datetime, timezone
+import hashlib
+import json
+import math
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import requests
@@ -12,6 +16,26 @@ LOCATIONS = {
     'Rabat': (34.0209, -6.8416),
     'Marrakech': (31.6295, -7.9811),
     'Ouarzazate': (30.9335, -6.9370),
+}
+MERRA2_LAT_RES_DEG = 0.5
+MERRA2_LON_RES_DEG = 0.625
+MOROCCO_PHYSIOGRAPHY = {
+    'Casablanca': (
+        'Atlantic coastal plain',
+        'A 0.5° × 0.625° cell straddles nearshore Atlantic marine air and warmer inland Chaouia plains, smoothing fine sea-breeze gradients.'
+    ),
+    'Rabat': (
+        'Northern Atlantic coast',
+        'Coarse MERRA-2 grid representation blends humid Atlantic boundary-layer air with inland plateau conditions.'
+    ),
+    'Marrakech': (
+        'Haouz plain bordering the High Atlas foothills',
+        'A single 0.5° × 0.625° footprint spans semi-arid basin floors and rising High Atlas piedmont slopes without station-scale downscaling.'
+    ),
+    'Ouarzazate': (
+        'Pre-Saharan High Atlas rain shadow',
+        'Reanalysis grid elevation integrates rugged High Atlas massif terrain rather than matching a single valley weather station.'
+    ),
 }
 API = 'https://power.larc.nasa.gov/api/temporal/monthly/point'
 VARIABLES = {
@@ -87,13 +111,20 @@ def trend(frame):
     # Report both intervals, and use the wider interval as a cautious screening rule.
     ci = robust.conf_int(alpha=0.05)[1] * 10
     iid_ci = ols.conf_int(alpha=0.05)[1] * 10
-    se = max(float(robust.bse[1]), float(ols.bse[1]))
+    se_ols = float(ols.bse[1])
+    se_hac = float(robust.bse[1])
+    se = max(se_hac, se_ols)
     crit = stats.t.ppf(0.975, len(x) - 2)
     slope = float(ols.params[1])
     wide_ci = [(slope - crit * se) * 10, (slope + crit * se) * 10]
     p = float(2 * stats.t.sf(abs(slope / se), len(x) - 2)) if se > 0 else 0.0
     residual = ols.resid
     rho = float(np.corrcoef(residual[:-1], residual[1:])[0, 1]) if np.std(residual) > 1e-12 else 0.0
+    se_ols_dec = se_ols * 10.0
+    se_hac_dec = se_hac * 10.0
+    se_caut_dec = se * 10.0
+    hac_ratio = float(se_hac / se_ols) if se_ols > 0 else 1.0
+    caut_ratio = float(se / se_ols) if se_ols > 0 else 1.0
     return dict(
         n=len(x),
         slope_decade=slope * 10,
@@ -110,7 +141,48 @@ def trend(frame):
         mean=float(y.mean()),
         start=int(x[0]),
         end=int(x[-1]),
+        se_ols_decade=se_ols_dec,
+        se_hac_decade=se_hac_dec,
+        se_cautious_decade=se_caut_dec,
+        hac_to_ols_se_ratio=hac_ratio,
+        cautious_to_ols_se_ratio=caut_ratio,
+        cautious_floored_by_ols=bool(se_ols > se_hac),
     )
+
+
+def _select_interval_bundle(res, interval_mode='cautious'):
+    """Select active (CI, p_value, se_decade, label) uniformly across 'cautious', 'hac', and 'conventional' modes."""
+    if interval_mode == 'conventional':
+        return res['iid_ci95'], res['iid_p'], res['se_ols_decade'], 'Conventional OLS'
+    if interval_mode == 'hac':
+        return res['hac_ci95'], res['hac_p'], res['se_hac_decade'], 'Raw Newey–West HAC'
+    return res['ci95'], res['p_value'], res['se_cautious_decade'], 'Cautious max(SE_OLS, SE_HAC)'
+
+
+def uncertainty_lens_summary(res):
+    """Return structured comparison of OLS, Raw HAC, and Cautious max(OLS, HAC) uncertainty assumptions."""
+    if res is None:
+        return None
+    return {
+        'se_ols_decade': res['se_ols_decade'],
+        'se_hac_decade': res['se_hac_decade'],
+        'se_cautious_decade': res['se_cautious_decade'],
+        'hac_to_ols_se_ratio': res['hac_to_ols_se_ratio'],
+        'cautious_to_ols_se_ratio': res['cautious_to_ols_se_ratio'],
+        'cautious_floored_by_ols': res['cautious_floored_by_ols'],
+        'hac_lags': res['hac_lags'],
+        'residual_lag1': res['residual_lag1'],
+        'ols_ci95': res['iid_ci95'],
+        'hac_ci95': res['hac_ci95'],
+        'cautious_ci95': res['ci95'],
+        'ols_excludes_zero': excludes_zero(res['iid_ci95']),
+        'hac_excludes_zero': excludes_zero(res['hac_ci95']),
+        'cautious_excludes_zero': excludes_zero(res['ci95']),
+        'ratio_note': (
+            'SE_HAC / SE_OLS measures the relative change in estimated standard error compared to conventional OLS; '
+            'it is NOT a Type-I error probability or false-positive rate.'
+        ),
+    }
 
 
 def excludes_zero(ci):
@@ -156,10 +228,12 @@ def evaluate_site(location, data, parameter, start, end, interval_mode='cautious
         'error': None,
         'result': None,
         'cautious_excludes_zero': False,
+        'hac_excludes_zero': False,
         'iid_excludes_zero': False,
         'active_excludes_zero': False,
         'time_dependence_changes_verdict': False,
         'cautious_status': 'Ineligible for inference',
+        'hac_status': 'Ineligible for inference',
         'iid_status': 'Ineligible for inference',
         'active_status': 'Ineligible for inference',
     }
@@ -170,28 +244,31 @@ def evaluate_site(location, data, parameter, start, end, interval_mode='cautious
         return site
 
     cautious_ex = excludes_zero(res['ci95'])
+    hac_ex = excludes_zero(res['hac_ci95'])
     iid_ex = excludes_zero(res['iid_ci95'])
-    use_iid = interval_mode == 'conventional'
-    active_ci = res['iid_ci95'] if use_iid else res['ci95']
-    active_p = res['iid_p'] if use_iid else res['p_value']
-    active_ex = iid_ex if use_iid else cautious_ex
+    active_ci, active_p, _, _ = _select_interval_bundle(res, interval_mode)
+    active_ex = excludes_zero(active_ci)
 
     direction = 'positive' if res['slope_decade'] > 0 else 'negative'
     cautious_status = f"Excludes zero ({direction} trend)" if cautious_ex else "Crosses zero (inconclusive)"
+    hac_status = f"Excludes zero ({direction} trend)" if hac_ex else "Crosses zero (inconclusive)"
     iid_status = f"Excludes zero ({direction} trend)" if iid_ex else "Crosses zero (inconclusive)"
+    active_status = f"Excludes zero ({direction} trend)" if active_ex else "Crosses zero (inconclusive)"
 
     site.update({
         'eligible': True,
         'result': res,
         'cautious_excludes_zero': cautious_ex,
+        'hac_excludes_zero': hac_ex,
         'iid_excludes_zero': iid_ex,
         'active_ci': active_ci,
         'active_p': active_p,
         'active_excludes_zero': active_ex,
         'time_dependence_changes_verdict': bool(cautious_ex != iid_ex),
         'cautious_status': cautious_status,
+        'hac_status': hac_status,
         'iid_status': iid_status,
-        'active_status': iid_status if use_iid else cautious_status,
+        'active_status': active_status,
     })
     return site
 
@@ -468,6 +545,7 @@ def climate_trial(loc_a, data_a, loc_b, data_b, parameter='T2M', start=1991, end
         'slope_diff_identity_delta': None,
         'residual_correlation': None,
         'cautious_excludes_zero': False,
+        'hac_excludes_zero': False,
         'iid_excludes_zero': False,
         'active_excludes_zero': False,
         'time_dependence_changes_verdict': False,
@@ -543,11 +621,10 @@ def climate_trial(loc_a, data_a, loc_b, data_b, parameter='T2M', start=1991, end
     merged['residual_diff'] = (merged['diff'].to_numpy(dtype=float) - np.array(diff_res['fitted'], dtype=float)).tolist()
 
     cautious_ex = excludes_zero(diff_res['ci95'])
+    hac_ex = excludes_zero(diff_res['hac_ci95'])
     iid_ex = excludes_zero(diff_res['iid_ci95'])
-    use_iid = interval_mode == 'conventional'
-    active_ci = diff_res['iid_ci95'] if use_iid else diff_res['ci95']
-    active_p = diff_res['iid_p'] if use_iid else diff_res['p_value']
-    active_ex = iid_ex if use_iid else cautious_ex
+    active_ci, active_p, _, _ = _select_interval_bundle(diff_res, interval_mode)
+    active_ex = excludes_zero(active_ci)
     slope_diff = diff_res['slope_decade']
 
     if active_ex and slope_diff > 0:
@@ -620,6 +697,7 @@ def climate_trial(loc_a, data_a, loc_b, data_b, parameter='T2M', start=1991, end
         'slope_diff_identity_delta': identity_delta,
         'residual_correlation': residual_corr,
         'cautious_excludes_zero': cautious_ex,
+        'hac_excludes_zero': hac_ex,
         'iid_excludes_zero': iid_ex,
         'active_ci': active_ci,
         'active_p': active_p,
@@ -632,3 +710,112 @@ def climate_trial(loc_a, data_a, loc_b, data_b, parameter='T2M', start=1991, end
         'overlap_insight': overlap_insight,
     })
     return base
+
+
+def approximate_grid_footprint(lat, lon, lat_step=MERRA2_LAT_RES_DEG, lon_step=MERRA2_LON_RES_DEG):
+    """Return closed lat/lon ring vertices representing an approximate MERRA-2 resolution footprint (not exact grid cell edges)."""
+    half_lat = 0.5 * float(lat_step)
+    half_lon = 0.5 * float(lon_step)
+    lat_c = float(lat)
+    lon_c = float(lon)
+    south = max(-90.0, lat_c - half_lat)
+    north = min(90.0, lat_c + half_lat)
+    west = lon_c - half_lon
+    east = lon_c + half_lon
+    lat_km = float(lat_step) * 111.32
+    lon_km = float(lon_step) * 111.32 * max(0.0, math.cos(math.radians(lat_c)))
+    return {
+        'lats': [south, south, north, north, south],
+        'lons': [west, east, east, west, west],
+        'bounds': {'south': south, 'north': north, 'west': west, 'east': east},
+        'lat_km': round(lat_km, 1),
+        'lon_km': round(lon_km, 1),
+    }
+
+
+def extract_grid_metadata(location, data, requested_lat=None, requested_lon=None):
+    """Extract authoritative NASA POWER spatial metadata and verify whether exact grid-cell bounds exist."""
+    ep = data.get('_earthpulse', {}) if isinstance(data, dict) else {}
+    header = data.get('header', {}) if isinstance(data, dict) else {}
+    geom = data.get('geometry', {}) if isinstance(data, dict) else {}
+    coords = geom.get('coordinates') or []
+
+    req_lat = requested_lat if requested_lat is not None else ep.get('requested_latitude')
+    req_lon = requested_lon if requested_lon is not None else ep.get('requested_longitude')
+
+    ret_lon = float(coords[0]) if len(coords) >= 2 and coords[0] is not None else (float(req_lon) if req_lon is not None else 0.0)
+    ret_lat = float(coords[1]) if len(coords) >= 2 and coords[1] is not None else (float(req_lat) if req_lat is not None else 0.0)
+    grid_elev_m = float(coords[2]) if len(coords) >= 3 and coords[2] is not None else None
+
+    if req_lat is None:
+        req_lat = ret_lat
+    if req_lon is None:
+        req_lon = ret_lon
+
+    req_lat = float(req_lat)
+    req_lon = float(req_lon)
+    has_bounds_in_meta = bool(
+        geom.get('type') == 'Polygon'
+        or ('cell_bounds' in geom)
+        or ('grid_cell' in header)
+    )
+    center_for_scale_lat = ret_lat if len(coords) >= 2 else req_lat
+    center_for_scale_lon = ret_lon if len(coords) >= 2 else req_lon
+    footprint = approximate_grid_footprint(center_for_scale_lat, center_for_scale_lon)
+
+    region_name, region_note = MOROCCO_PHYSIOGRAPHY.get(
+        location,
+        (
+            'Global custom coordinate',
+            'MERRA-2 represents climate variables averaged across an ~0.5° × 0.625° regional cell rather than a point weather station.',
+        ),
+    )
+    sources = header.get('sources') or ['MERRA2']
+    return {
+        'location': location,
+        'requested_lat': req_lat,
+        'requested_lon': req_lon,
+        'returned_lat': ret_lat,
+        'returned_lon': ret_lon,
+        'geometry_type': geom.get('type', 'Unknown'),
+        'grid_elevation_m': grid_elev_m,
+        'exact_footprint_available': has_bounds_in_meta,
+        'footprint_label': (
+            'Authoritative grid cell bounds from metadata'
+            if has_bounds_in_meta
+            else f'Approximate {MERRA2_LAT_RES_DEG}° × {MERRA2_LON_RES_DEG}° MERRA-2 resolution scale (exact cell vertices unavailable in point JSON)'
+        ),
+        'resolution_deg': f'{MERRA2_LAT_RES_DEG}° lat × {MERRA2_LON_RES_DEG}° lon',
+        'approx_km': f'~{footprint["lat_km"]:.0f} km N–S × ~{footprint["lon_km"]:.0f} km E–W',
+        'footprint': footprint,
+        'header_title': header.get('title', 'NASA/POWER Source Native Resolution Monthly and Annual'),
+        'sources': list(sources),
+        'api_version': header.get('api', {}).get('version', 'unknown'),
+        'request_url': ep.get('request_url'),
+        'retrieved_utc': ep.get('retrieved_utc'),
+        'region_name': region_name,
+        'station_vs_grid_note': region_note,
+        'elevation_caveat': (
+            'Grid elevation reflects coarse reanalysis terrain representation from NASA metadata; '
+            'no local weather-station downscaling or elevation correction is applied.'
+        ),
+    }
+
+
+def source_sha256(location, data, data_dir=None):
+    """Compute SHA-256 checksum matching the exact analyzed payload (bundled snapshot file or live NASA JSON)."""
+    snap_root = Path(data_dir) if data_dir is not None else (Path(__file__).parent / 'data')
+    snap_path = snap_root / f'{location.lower()}.json'
+    if location in LOCATIONS and snap_path.exists():
+        raw_bytes = snap_path.read_bytes()
+        try:
+            snap_obj = json.loads(raw_bytes)
+        except Exception:
+            snap_obj = None
+        if snap_obj == data:
+            digest = hashlib.sha256(raw_bytes).hexdigest()
+            return {'sha256': digest, 'scope': f'Unaltered bundled snapshot ({snap_path.name})'}
+    payload = {k: v for k, v in data.items() if k != '_earthpulse'} if isinstance(data, dict) else data
+    canonical = json.dumps(payload, sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode('utf-8')
+    digest = hashlib.sha256(canonical).hexdigest()
+    return {'sha256': digest, 'scope': 'Live NASA API payload (canonical JSON)'}

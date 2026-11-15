@@ -7,17 +7,23 @@ import plotly.graph_objects as go
 import streamlit as st
 from analysis import (
     LOCATIONS,
+    MERRA2_LAT_RES_DEG,
+    MERRA2_LON_RES_DEG,
     VARIABLES,
     annual_series,
     climate_trial,
     compare_locations,
     evaluate_site,
     excludes_zero,
+    extract_grid_metadata,
     fetch_power,
     format_bound,
     format_interval,
+    source_sha256,
     trend,
+    uncertainty_lens_summary,
 )
+from brief_pdf import build_scientific_evidence_brief_pdf
 
 st.set_page_config(
     page_title='EarthPulse · The Climate Trial',
@@ -41,10 +47,11 @@ header[data-testid="stHeader"] {
     padding-top: 3.05rem !important;
     padding-bottom: 2.5rem !important;
 }
-h1, h2, h3, .editorial-headline {
+h1, h2, h3, .editorial-headline, .step-title {
     font-family: Georgia, "Times New Roman", serif !important;
     color: #14282d;
     letter-spacing: -0.025em;
+    text-wrap: balance;
 }
 .eyebrow-row {
     display: flex;
@@ -73,18 +80,99 @@ h1, h2, h3, .editorial-headline {
     font-weight: 500;
 }
 .editorial-headline {
-    font-size: clamp(1.75rem, 2.45vw, 2.35rem);
-    line-height: 1.12;
+    font-size: clamp(1.65rem, 1.15rem + 2vw, 2.35rem);
+    line-height: 1.15;
     font-weight: 700;
     margin: 0.1rem 0 0.3rem 0;
     color: #14282d;
 }
+.verdict-lead, .trial-subq, .evidence-panel p, .step-banner-sub {
+    line-height: 1.5;
+    color: #243b40;
+    max-width: 75ch;
+    text-wrap: pretty;
+    overflow-wrap: break-word;
+}
 .verdict-lead {
     font-size: 1.02rem;
-    line-height: 1.48;
-    color: #243b40;
-    max-width: 1180px;
     margin: 0 0 0.65rem 0;
+}
+.step-ribbon {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.65rem;
+    margin: 0.35rem 0 0.75rem 0;
+}
+.step-card {
+    background: #ece8de;
+    border: 1px solid #d0c9b8;
+    border-left: 4px solid #15616d;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+}
+.step-card-num {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #15616d;
+}
+.step-card-q {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 0.96rem;
+    font-weight: 700;
+    color: #14282d;
+    margin: 0.08rem 0;
+}
+.step-card-desc {
+    font-size: 0.8rem;
+    color: #2f474d;
+    line-height: 1.38;
+}
+.step-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.45rem;
+    border-top: 2px solid #d0c9b8;
+    padding-top: 0.7rem;
+    margin: 0.95rem 0 0.45rem 0;
+}
+.step-banner-kicker {
+    font-size: 0.76rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #b55327;
+}
+.step-title {
+    font-size: 1.28rem;
+    font-weight: 700;
+    margin: 0.05rem 0 0.15rem 0;
+}
+.step-banner-sub {
+    font-size: 0.92rem;
+    margin: 0 0 0.45rem 0;
+}
+.reality-callout {
+    background: #f9f7f2;
+    border: 1px solid #d6d0c2;
+    border-left: 4px solid #b55327;
+    border-radius: 6px;
+    padding: 0.65rem 0.85rem;
+    margin: 0.35rem 0 0.5rem 0;
+    font-size: 0.86rem;
+    color: #243b40;
+    line-height: 1.46;
+}
+.passport-hero {
+    background: #ece8de;
+    border: 1px solid #cbc3b2;
+    border-left: 5px solid #14282d;
+    border-radius: 8px;
+    padding: 0.9rem 1.05rem;
+    margin: 0.45rem 0 0.65rem 0;
 }
 .chart-header-box {
     background: #ece8de;
@@ -214,7 +302,7 @@ div[data-testid="stPlotlyChart"] {
     border: 1px solid #d6d0c2;
     border-radius: 8px;
     padding: 0.85rem 1rem;
-    height: 100%;
+    min-height: 100%;
 }
 .city-card-a {
     border-top: 4px solid #15616d;
@@ -378,6 +466,11 @@ div[data-testid="stPlotlyChart"] {
     border-radius: 6px;
     background: #faf8f3;
 }
+.table-wrapper.table-wrapper-auto {
+    max-block-size: none;
+    overflow-y: visible;
+    overflow-x: auto;
+}
 .table-wrapper table {
     width: 100%;
     border-collapse: separate;
@@ -434,9 +527,9 @@ div[data-testid="stPlotlyChart"] {
 .stButton > button, .stDownloadButton > button {
     background-color: #15616d;
     color: #ffffff;
-    border: 0;
+    border: 1px solid transparent;
 }
-.stButton > button[kind="primary"] {
+.stButton > button[kind="primary"], .stDownloadButton > button[kind="primary"] {
     background-color: #b55327;
     color: #ffffff;
     font-weight: 700;
@@ -444,12 +537,18 @@ div[data-testid="stPlotlyChart"] {
     padding: 0.55rem 1.1rem;
     border-radius: 6px;
 }
-.stButton > button[kind="primary"]:hover {
+.stButton > button[kind="primary"]:hover, .stDownloadButton > button[kind="primary"]:hover {
     background-color: #96411c;
     color: #ffffff;
 }
 a {
     color: #15616d;
+}
+@media (forced-colors: active) {
+    .city-card, .verdict-banner, .evidence-panel, .step-card, .reality-callout, .passport-hero,
+    .stButton > button, .stDownloadButton > button {
+        border: 1px solid ButtonText !important;
+    }
 }
 @media (max-width: 768px) {
     .block-container {
@@ -463,8 +562,8 @@ a {
     .verdict-lead {
         font-size: 0.94rem;
     }
-    .trial-metrics-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+    .trial-metrics-grid, .step-ribbon {
+        grid-template-columns: minmax(0, 1fr);
     }
     .verdict-table {
         font-size: 0.78rem;
@@ -671,6 +770,18 @@ def build_whisker_figure(comp, lens_mode):
         borderpad=3,
     )
 
+    active_mode = comp.get('interval_mode', 'cautious')
+    primary_trace_name = (
+        'Raw Newey–West HAC 95% CI (SE_HAC)'
+        if active_mode == 'hac'
+        else 'Cautious 95% CI (HAC / max SE)'
+    )
+    primary_hover_tag = (
+        'Raw HAC 95% CI (SE_HAC)'
+        if active_mode == 'hac'
+        else 'Cautious 95% CI (HAC / max SE)'
+    )
+
     for idx, (s, y_base, color, symbol, glyph) in enumerate(sites):
         r = s['result']
         slope = r['slope_decade']
@@ -684,7 +795,7 @@ def build_whisker_figure(comp, lens_mode):
                 x=[slope],
                 y=[y_cautious],
                 mode='markers',
-                name='Cautious 95% CI (HAC / max SE)',
+                name=primary_trace_name,
                 legendgroup='cautious',
                 showlegend=(idx == 0),
                 opacity=cautious_opacity,
@@ -699,7 +810,7 @@ def build_whisker_figure(comp, lens_mode):
                     width=7,
                 ),
                 hovertemplate=(
-                    f"<b>{s['location']} · Cautious 95% CI (HAC / max SE)</b><br>"
+                    f"<b>{s['location']} · {primary_hover_tag}</b><br>"
                     f"Slope: {format_bound(slope)} {rate_unit}<br>"
                     f"Interval: {format_interval(cautious_ci, rate_unit)}<br>"
                     f"Status: {s['cautious_status']}<extra></extra>"
@@ -916,74 +1027,210 @@ def build_window_sensitivity_figure(loc_a, data_a, loc_b, data_b, parameter):
     return fig
 
 
-def build_morocco_grid_map(parameter, start=1991, end=2025):
-    """Build a spatial overview map of the four Moroccan MERRA-2 grid representations and their decadal slopes."""
+def build_grid_reality_map(
+    parameter,
+    start=1991,
+    end=2025,
+    loc_a='Casablanca',
+    data_a=None,
+    lat_a=None,
+    lon_a=None,
+    loc_b='Marrakech',
+    data_b=None,
+    lat_b=None,
+    lon_b=None,
+    interval_mode='cautious',
+):
+    """Build an interactive geographic reality map showing cities, Atlas/Atlantic context, and approximate 0.5°x0.625° MERRA-2 footprints."""
     unit = VARIABLES[parameter][1]
     rate_unit = f"{unit}/decade"
-    lats, lons, names, texts, colors_list, symbols = [], [], [], [], [], []
-    regime_notes = {
-        'Casablanca': 'Atlantic Coastal Plain',
-        'Rabat': 'Northern Atlantic Coast',
-        'Marrakech': 'Haouz Plain / Atlas Foothills',
-        'Ouarzazate': 'Pre-Saharan High Atlas Rain Shadow',
+    fig = go.Figure()
+
+    # Check if custom locations extend beyond Morocco
+    active_pts = []
+    if lat_a is not None and lon_a is not None:
+        active_pts.append((float(lat_a), float(lon_a)))
+    if lat_b is not None and lon_b is not None:
+        active_pts.append((float(lat_b), float(lon_b)))
+    in_morocco = all(27.0 <= p_lat <= 37.5 and -14.5 <= p_lon <= -0.5 for p_lat, p_lon in active_pts)
+
+    # Schematic physiographic Atlas Mountains terrain context (explicitly labeled non-DEM context)
+    high_atlas_lats = [30.65, 31.10, 31.65, 32.25, 33.15, 33.75, 33.35, 32.00, 31.35, 30.85, 30.35, 30.65]
+    high_atlas_lons = [-9.65, -8.50, -7.35, -5.85, -4.45, -3.55, -3.15, -4.95, -6.45, -7.85, -9.25, -9.65]
+    fig.add_trace(
+        go.Scattergeo(
+            lat=high_atlas_lats,
+            lon=high_atlas_lons,
+            mode='lines',
+            fill='toself',
+            fillcolor='rgba(155, 128, 92, 0.22)',
+            line=dict(color='rgba(122, 95, 62, 0.55)', width=1.4, dash='dot'),
+            name='Atlas Mountains (schematic terrain context)',
+            hovertemplate=(
+                '<b>Atlas Mountains Corridor</b><br>'
+                'Schematic High &amp; Middle Atlas terrain context.<br>'
+                'Separates humid Atlantic coastal plains from semi-arid Haouz &amp; Pre-Saharan valleys.<extra></extra>'
+            ),
+        )
+    )
+    fig.add_trace(
+        go.Scattergeo(
+            lat=[32.95, 31.32],
+            lon=[-10.45, -6.10],
+            mode='text',
+            text=['<i>Atlantic Ocean<br>(marine cooling)</i>', '<i>High Atlas Range<br>(schematic context)</i>'],
+            textfont=dict(family='Georgia, serif', size=10.2, color='#455c61'),
+            showlegend=False,
+            hoverinfo='skip',
+        )
+    )
+
+    # Gather all four reference cities + any custom active locations
+    ref_records = []
+    pos_map = {
+        'Casablanca': 'top left',
+        'Rabat': 'top right',
+        'Marrakech': 'middle left',
+        'Ouarzazate': 'bottom right',
     }
     for city, (clat, clon) in LOCATIONS.items():
         snap = Path(__file__).parent / 'data' / f'{city.lower()}.json'
         if not snap.exists():
             continue
         cdata = json.loads(snap.read_text())
-        ev = evaluate_site(city, cdata, parameter, start, end)
-        lats.append(clat)
-        lons.append(clon)
+        if city == loc_a and data_a is not None:
+            cdata = data_a
+        elif city == loc_b and data_b is not None:
+            cdata = data_b
+        meta = extract_grid_metadata(city, cdata, clat, clon)
+        ev = evaluate_site(city, cdata, parameter, start, end, interval_mode=interval_mode)
+        ref_records.append((city, cdata, meta, ev))
+
+    # Add custom coordinates if chosen for A or B
+    custom_records = []
+    for role_loc, role_data, role_lat, role_lon in [
+        (loc_a, data_a, lat_a, lon_a),
+        (loc_b, data_b, lat_b, lon_b),
+    ]:
+        if role_loc and role_loc not in LOCATIONS and role_data is not None and role_lat is not None and role_lon is not None:
+            meta = extract_grid_metadata(role_loc, role_data, role_lat, role_lon)
+            ev = evaluate_site(role_loc, role_data, parameter, start, end, interval_mode=interval_mode)
+            custom_records.append((role_loc, role_data, meta, ev))
+
+    all_records = ref_records + custom_records
+
+    # Draw approximate MERRA-2 0.5° x 0.625° resolution footprints first (behind markers)
+    for idx_rec, (cname, _, meta, _) in enumerate(all_records):
+        fp = meta['footprint']
+        is_a = cname == loc_a
+        is_b = cname == loc_b
+        if is_a:
+            fill_rgba = 'rgba(21, 97, 109, 0.16)'
+            line_col = SITE_A_COLOR
+            line_w = 2.0
+            trace_name = f"Approx. {MERRA2_LAT_RES_DEG}°×{MERRA2_LON_RES_DEG}° cell · ● {cname}"
+            show_leg = True
+        elif is_b:
+            fill_rgba = 'rgba(181, 83, 39, 0.16)'
+            line_col = SITE_B_COLOR
+            line_w = 2.0
+            trace_name = f"Approx. {MERRA2_LAT_RES_DEG}°×{MERRA2_LON_RES_DEG}° cell · ◆ {cname}"
+            show_leg = True
+        else:
+            fill_rgba = 'rgba(80, 96, 100, 0.05)'
+            line_col = 'rgba(80, 96, 100, 0.48)'
+            line_w = 1.2
+            trace_name = f"Approx. {MERRA2_LAT_RES_DEG}°×{MERRA2_LON_RES_DEG}° reference scale"
+            show_leg = False
+
+        elev_txt = f"{meta['grid_elevation_m']:.1f} m (grid metadata)" if meta['grid_elevation_m'] is not None else 'N/A'
+        fig.add_trace(
+            go.Scattergeo(
+                lat=fp['lats'],
+                lon=fp['lons'],
+                mode='lines',
+                fill='toself',
+                fillcolor=fill_rgba,
+                line=dict(color=line_col, width=line_w, dash='dash'),
+                name=trace_name,
+                showlegend=show_leg,
+                hovertemplate=(
+                    f"<b>{cname} · {meta['footprint_label']}</b><br>"
+                    f"Span: {meta['resolution_deg']} ({meta['approx_km']})<br>"
+                    f"Returned NASA GeoJSON Point: {meta['returned_lat']:.3f}°N, {meta['returned_lon']:.3f}°E<br>"
+                    f"Metadata Grid Elev: {elev_txt}<br>"
+                    f"<i>Point JSON omits exact cell bounds; box illustrates approximate MERRA-2 resolution scale.</i><extra></extra>"
+                ),
+            )
+        )
+
+    # Plot city / selected coordinate point markers on top
+    for cname, _, meta, ev in all_records:
+        is_a = cname == loc_a
+        is_b = cname == loc_b
+        plat, plon = meta['requested_lat'], meta['requested_lon']
+        elev_txt = f"{meta['grid_elevation_m']:.0f} m grid elev" if meta['grid_elevation_m'] is not None else 'global cell'
         if ev['eligible']:
             r = ev['result']
             sl_short = f"{format_bound(r['slope_decade'])} {unit}/dec"
-            sl_str = f"{format_bound(r['slope_decade'])} {rate_unit}"
-            ci_str = format_interval(r['ci95'], rate_unit)
-            status = ev['cautious_status']
-            col = SITE_B_COLOR if ev['cautious_excludes_zero'] else SITE_A_COLOR
-            sym = 'diamond' if ev['cautious_excludes_zero'] else 'circle'
+            ci_str = format_interval(ev['active_ci'], rate_unit)
+            verdict_txt = ev['active_status']
         else:
-            sl_short = 'Ineligible'
-            sl_str = 'Ineligible (<30 yr)'
+            sl_short = 'Ineligible (<30 yr)'
             ci_str = 'N/A'
-            status = 'Ineligible'
-            col = '#6e4b0c'
-            sym = 'circle-open'
-        names.append(f"<b>{city}</b><br>{sl_short}")
-        texts.append(
-            f"<b>{city}</b> · {regime_notes.get(city, '')}<br>"
-            f"MERRA-2 center: {clat:.2f}°N, {clon:.2f}°E<br>"
-            f"Slope: {sl_str}<br>"
-            f"Cautious 95% CI: {ci_str}<br>"
-            f"Verdict: {status}"
-        )
-        colors_list.append(col)
-        symbols.append(sym)
+            verdict_txt = 'Ineligible'
 
-    fig = go.Figure(
-        go.Scattergeo(
-            lat=lats,
-            lon=lons,
-            text=names,
-            customdata=texts,
-            mode='markers+text',
-            textposition=['middle left', 'top right', 'middle left', 'bottom right'],
-            textfont=dict(family='Arial, sans-serif', size=11.5, color=INK_COLOR),
-            marker=dict(
-                size=14,
-                color=colors_list,
-                symbol=symbols,
-                line=dict(width=2, color='#ffffff'),
-            ),
-            hovertemplate='%{customdata}<extra></extra>',
+        if is_a:
+            m_col, m_sym, m_size = SITE_A_COLOR, 'circle', 13
+            role_tag = '● Selected A'
+        elif is_b:
+            m_col, m_sym, m_size = SITE_B_COLOR, 'diamond', 14
+            role_tag = '◆ Selected B'
+        else:
+            m_col, m_sym, m_size = '#53686d', 'circle-open', 10
+            role_tag = '○ Reference city'
+
+        fig.add_trace(
+            go.Scattergeo(
+                lat=[plat],
+                lon=[plon],
+                mode='markers+text',
+                text=[f"<b>{cname}</b><br>{sl_short}"],
+                textposition=pos_map.get(cname, 'top center'),
+                textfont=dict(family='Arial, sans-serif', size=10.8, color=INK_COLOR),
+                name=f"{role_tag}: {cname}",
+                showlegend=(is_a or is_b),
+                marker=dict(size=m_size, color=m_col, symbol=m_sym, line=dict(width=2, color='#ffffff')),
+                hovertemplate=(
+                    f"<b>{cname}</b> ({role_tag}) · {meta['region_name']}<br>"
+                    f"Selected query coords: {meta['requested_lat']:.4f}°N, {meta['requested_lon']:.4f}°E<br>"
+                    f"NASA returned coords: {meta['returned_lat']:.3f}°N, {meta['returned_lon']:.3f}°E ({elev_txt})<br>"
+                    f"Slope: {sl_short}<br>"
+                    f"Active 95% CI: {ci_str} ({verdict_txt})<extra></extra>"
+                ),
+            )
         )
-    )
+
+    if in_morocco or not active_pts:
+        geo_cfg = dict(
+            scope='africa',
+            center=dict(lat=32.35, lon=-7.2),
+            lataxis_range=[28.8, 35.8],
+            lonaxis_range=[-12.5, -1.8],
+        )
+    else:
+        all_lats = [p[0] for p in active_pts] + [32.35]
+        all_lons = [p[1] for p in active_pts] + [-7.2]
+        lat_pad = max(3.5, 0.25 * (max(all_lats) - min(all_lats)))
+        lon_pad = max(4.5, 0.25 * (max(all_lons) - min(all_lons)))
+        geo_cfg = dict(
+            scope='world',
+            lataxis_range=[max(-85.0, min(all_lats) - lat_pad), min(85.0, max(all_lats) + lat_pad)],
+            lonaxis_range=[max(-179.0, min(all_lons) - lon_pad), min(179.0, max(all_lons) + lon_pad)],
+        )
+
     fig.update_geos(
-        scope='africa',
-        center=dict(lat=32.4, lon=-7.4),
-        lataxis_range=[28.6, 36.2],
-        lonaxis_range=[-13.2, -1.8],
+        **geo_cfg,
         showland=True,
         landcolor='#efeadd',
         showocean=True,
@@ -991,16 +1238,409 @@ def build_morocco_grid_map(parameter, start=1991, end=2025):
         showcountries=True,
         countrycolor='#b8b09c',
         showcoastlines=True,
-        coastlinecolor='#7a9a9f',
+        coastlinecolor='#5d7e84',
+        showrivers=True,
+        rivercolor='#9ec2c9',
         projection_type='mercator',
     )
     fig.update_layout(
-        height=320,
+        height=390,
         paper_bgcolor=CHART_BG,
-        margin=dict(l=4, r=4, t=8, b=8),
-        showlegend=False,
+        margin=dict(l=4, r=4, t=8, b=58),
+        legend=dict(
+            orientation='h',
+            yanchor='top',
+            y=-0.03,
+            xanchor='left',
+            x=0.0,
+            font=dict(size=10.2, color=INK_COLOR),
+            bgcolor='rgba(249,247,242,0.0)',
+        ),
     )
     return fig
+
+
+def build_morocco_grid_map(parameter, start=1991, end=2025):
+    """Backwards-compatible wrapper for V2 map calls."""
+    return build_grid_reality_map(parameter, start=start, end=end)
+
+
+def render_grid_reality_section(
+    loc_a,
+    data_a,
+    lat_a,
+    lon_a,
+    loc_b=None,
+    data_b=None,
+    lat_b=None,
+    lon_b=None,
+    parameter='T2M',
+    start=1991,
+    end=2025,
+    interval_mode='cautious',
+):
+    """Render STEP 1 · The Grid-Cell Reality Map and metadata-verified point-vs-grid explanation."""
+    meta_a = extract_grid_metadata(loc_a, data_a, lat_a, lon_a)
+    has_b = bool(loc_b and data_b is not None and lat_b is not None and lon_b is not None)
+    meta_b = extract_grid_metadata(loc_b, data_b, lat_b, lon_b) if has_b else None
+
+    st.markdown(
+        '<div class="step-banner">'
+        '<div><div class="step-banner-kicker">STEP 1 · WHERE IS THE EVIDENCE?</div>'
+        '<div class="step-title">The Grid-Cell Reality Map · Selected Coordinates vs. MERRA-2 Resolution</div></div>'
+        '<span class="provenance-badge">Approx. 0.5° × 0.625° MERRA-2 Scale · Exact Cell Bounds Not Published in Point JSON</span>'
+        '</div>'
+        '<p class="step-banner-sub">Compare point city coordinates against the regional reanalysis scale of NASA POWER '
+        'along Morocco’s Atlantic coastline and schematic Atlas Mountains barrier.</p>',
+        unsafe_allow_html=True,
+    )
+
+    m_col1, m_col2 = st.columns([1.22, 1.0], gap='medium')
+    with m_col1:
+        st.markdown(
+            f'<div class="chart-header-box">'
+            f'<div class="chart-header-title">Morocco Terrain Context &amp; Approximate MERRA-2 0.5° × 0.625° Cells</div>'
+            f'<div class="chart-header-sub">Dashed boxes illustrate approximate MERRA-2 horizontal resolution (~55–56 km × ~58–59 km at 31°–34°N); '
+            f'solid points mark selected query coordinates</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        fig = build_grid_reality_map(
+            parameter,
+            start=start,
+            end=end,
+            loc_a=loc_a,
+            data_a=data_a,
+            lat_a=lat_a,
+            lon_a=lon_a,
+            loc_b=loc_b if has_b else None,
+            data_b=data_b if has_b else None,
+            lat_b=lat_b if has_b else None,
+            lon_b=lon_b if has_b else None,
+            interval_mode=interval_mode,
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    with m_col2:
+        rows_html = []
+        paired_metas = [('● A', meta_a)] + ([('◆ B', meta_b)] if meta_b is not None else [])
+        for glyph, m in paired_metas:
+            elev_str = f"{m['grid_elevation_m']:.2f} m" if m['grid_elevation_m'] is not None else 'N/A'
+            rows_html.append(
+                f"<tr>"
+                f"<td style='text-align:left;'><b>{glyph}: {m['location']}</b><br><span style='font-size:0.78rem;color:#4a5f65;'>{m['region_name']}</span></td>"
+                f"<td style='text-align:left;'>Query: {m['requested_lat']:.4f}°N, {m['requested_lon']:.4f}°E<br>"
+                f"<span style='font-size:0.78rem;color:#4a5f65;'>NASA JSON Point: {m['returned_lat']:.3f}°N, {m['returned_lon']:.3f}°E</span></td>"
+                f"<td style='text-align:left;'><b>{elev_str}</b><br><span style='font-size:0.78rem;color:#4a5f65;'>{m['approx_km']}</span></td>"
+                f"</tr>"
+            )
+        meta_table = (
+            f'<div class="table-wrapper table-wrapper-auto" tabindex="0" role="region" aria-label="Selected city coordinates versus NASA MERRA-2 grid metadata">'
+            f'<table><thead><tr>'
+            f'<th style="text-align:left;">Location &amp; Setting</th>'
+            f'<th style="text-align:left;">Selected vs. Returned Coords</th>'
+            f'<th style="text-align:left;">Grid Metadata Elev &amp; Scale</th>'
+            f'</tr></thead><tbody>{"".join(rows_html)}</tbody></table></div>'
+        )
+        st.markdown(meta_table, unsafe_allow_html=True)
+        elev_a_str = f"{meta_a['grid_elevation_m']:.1f} m" if meta_a['grid_elevation_m'] is not None else 'unavailable'
+        if meta_b is not None:
+            elev_b_str = f"{meta_b['grid_elevation_m']:.1f} m" if meta_b['grid_elevation_m'] is not None else 'unavailable'
+            elev_phrase = f"{elev_a_str} for {loc_a}, {elev_b_str} for {loc_b}"
+            phys_phrase = f"{meta_a['station_vs_grid_note']} {meta_b['station_vs_grid_note']}"
+        else:
+            elev_phrase = f"{elev_a_str} for {loc_a}"
+            phys_phrase = f"{meta_a['station_vs_grid_note']}"
+        callout_html = (
+            f'<div class="reality-callout">'
+            f'<b>Grid-Cell Estimates vs. Weather Stations:</b><br>'
+            f'• <b>Metadata check ({meta_a["header_title"]}):</b> Point JSON geometry reports <code>type: {meta_a["geometry_type"]}</code> '
+            f'with coarse reanalysis elevation ({elev_phrase}) '
+            f'and <i>omits exact MERRA-2 cell polygon boundaries</i>; map boxes therefore depict approximate <code>0.5° × 0.625°</code> scale rather than invented cell vertices.<br>'
+            f'• <b>Physical scale effect:</b> {phys_phrase}<br>'
+            f'• <b>Honesty rule:</b> {meta_a["elevation_caveat"]}'
+            f'</div>'
+        )
+        st.markdown(callout_html, unsafe_allow_html=True)
+
+
+LENS_OPTIONS = {
+    'Compare: Cautious max(SE_OLS, SE_HAC) + OLS': ('cautious', 'both'),
+    'Cautious safeguard: max(SE_OLS, SE_HAC)': ('cautious', 'cautious'),
+    'Raw Newey–West HAC (SE_HAC, unfloored)': ('hac', 'both'),
+    'Conventional OLS (SE_OLS, independent years)': ('conventional', 'conventional'),
+}
+
+
+def resolve_lens(label):
+    """Map UI uncertainty lens radio selection to (interval_mode, lens_mode)."""
+    return LENS_OPTIONS.get(label, ('cautious', 'both'))
+
+
+def render_step_ribbon(active_step=None):
+    """Render concise 3-step analytical narrative header connecting map, stats, and PDF passport."""
+    steps = [
+        ('STEP 1', 'Where Is the Evidence?', 'MERRA-2 0.5° × 0.625° grid scale & coastal/Atlas context'),
+        ('STEP 2', 'How Strong Is the Evidence?', 'Slopes, paired difference & OLS vs. raw HAC Uncertainty Lens'),
+        ('STEP 3', 'Can I Verify the Evidence?', 'One-page Scientific Evidence Brief PDF & SHA-256 hashes'),
+    ]
+    cards = []
+    for idx, (kicker, title, desc) in enumerate(steps, start=1):
+        accent = 'border-left-color:#b55327;' if active_step == idx else ''
+        cards.append(
+            f'<div class="step-card" style="{accent}">'
+            f'<div class="step-card-num">{kicker}</div>'
+            f'<div class="step-card-q">{title}</div>'
+            f'<div class="step-card-desc">{desc}</div>'
+            f'</div>'
+        )
+    st.markdown(f'<div class="step-ribbon">{"".join(cards)}</div>', unsafe_allow_html=True)
+
+
+def render_step_banner(step_num, question_title, headline_title, subtitle, badge=''):
+    """Render an editorial numbered banner matching STEP 1 styling."""
+    badge_html = f'<span class="provenance-badge">{badge}</span>' if badge else ''
+    st.markdown(
+        f'<div class="step-banner">'
+        f'<div><div class="step-banner-kicker">STEP {step_num} · {question_title}</div>'
+        f'<div class="step-title">{headline_title}</div></div>'
+        f'{badge_html}'
+        f'</div>'
+        f'<p class="step-banner-sub">{subtitle}</p>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_uncertainty_lens_panel(
+    series_rows,
+    active_interval_mode,
+    unit,
+    rate_unit,
+    lens_state_key=None,
+    lens_heading='Uncertainty Lens · Conventional OLS vs. Raw Newey–West HAC vs. Cautious Safeguard',
+    show_control=True,
+):
+    """Display interactive assumption controls and tabular SE / CI diagnostics without duplicating plots."""
+    st.markdown(f'#### {lens_heading}')
+    if show_control and lens_state_key:
+        st.radio(
+            'Active uncertainty assumption',
+            list(LENS_OPTIONS),
+            horizontal=True,
+            key=lens_state_key,
+        )
+
+    valid_entries = []
+    for label, res in series_rows:
+        lens = uncertainty_lens_summary(res) if res else None
+        if lens is not None:
+            valid_entries.append((label, res, lens))
+
+    if not valid_entries:
+        st.info('At least 30 complete calendar years are required to compute the OLS vs. Newey–West HAC lens.')
+        return
+
+    mode_labels = {
+        'cautious': 'Cautious safeguard · max(SE_OLS, SE_HAC)',
+        'hac': 'Raw Newey–West HAC · SE_HAC (unfloored)',
+        'conventional': 'Conventional OLS · SE_OLS (assumes independent years)',
+    }
+    st.caption(
+        f"**Active reporting assumption:** {mode_labels.get(active_interval_mode, active_interval_mode)}. "
+        "Charts above reflect this assumption automatically."
+    )
+
+    rows_html = []
+    floor_notes = []
+    for label, res, lens in valid_entries:
+        ols_cls = 'badge-clear' if lens['ols_excludes_zero'] else 'badge-cautious'
+        ols_txt = 'Excludes 0' if lens['ols_excludes_zero'] else 'Crosses 0'
+        hac_cls = 'badge-clear' if lens['hac_excludes_zero'] else 'badge-cautious'
+        hac_txt = 'Excludes 0' if lens['hac_excludes_zero'] else 'Crosses 0'
+        cau_cls = 'badge-clear' if lens['cautious_excludes_zero'] else 'badge-cautious'
+        cau_txt = 'Excludes 0' if lens['cautious_excludes_zero'] else 'Crosses 0'
+
+        if lens['cautious_floored_by_ols']:
+            safeguard_note = 'Floored at SE_OLS'
+            floor_notes.append(
+                f"{label}: raw SE_HAC ({lens['se_hac_decade']:.4f}) &lt; SE_OLS ({lens['se_ols_decade']:.4f}), "
+                f"ratio = {lens['hac_to_ols_se_ratio']:.2f}×; cautious max(SE_OLS, SE_HAC) retains SE_OLS."
+            )
+        else:
+            safeguard_note = f"Uses raw SE_HAC ({lens['hac_lags']} lags)"
+
+        rows_html.append(
+            f"<tr>"
+            f"<td style='text-align:left;'><b>{label}</b><br><span style='font-size:0.78rem;color:#4a5f65;'>ρ₁ = {lens['residual_lag1']:+.2f} · L = {lens['hac_lags']} lags</span></td>"
+            f"<td><b>{format_bound(res['slope_decade'])}</b><br><span style='font-size:0.78rem;color:#4a5f65;'>{rate_unit}</span></td>"
+            f"<td>{lens['se_ols_decade']:.4f}</td>"
+            f"<td><b>{lens['se_hac_decade']:.4f}</b></td>"
+            f"<td><b>{lens['hac_to_ols_se_ratio']:.2f}×</b></td>"
+            f"<td>{lens['se_cautious_decade']:.4f}<br><span style='font-size:0.76rem;color:#4a5f65;'>{safeguard_note}</span></td>"
+            f"<td style='text-align:left;'><span style='white-space:nowrap;'>{format_interval(lens['ols_ci95'], '')}</span> <span class='{ols_cls}'>{ols_txt}</span></td>"
+            f"<td style='text-align:left;'><span style='white-space:nowrap;'>{format_interval(lens['hac_ci95'], '')}</span> <span class='{hac_cls}'>{hac_txt}</span></td>"
+            f"<td style='text-align:left;'><span style='white-space:nowrap;'>{format_interval(lens['cautious_ci95'], '')}</span> <span class='{cau_cls}'>{cau_txt}</span></td>"
+            f"</tr>"
+        )
+
+    lens_table = (
+        f'<div class="table-wrapper table-wrapper-auto" tabindex="0" role="region" aria-label="Uncertainty Lens comparing OLS, raw Newey-West HAC, and cautious max standard errors">'
+        f'<table><thead><tr>'
+        f'<th style="text-align:left;">Series</th>'
+        f'<th>Slope</th>'
+        f'<th>SE<sub>OLS</sub></th>'
+        f'<th>Raw SE<sub>HAC</sub></th>'
+        f'<th>SE<sub>HAC</sub> / SE<sub>OLS</sub></th>'
+        f'<th>Cautious max SE</th>'
+        f'<th style="text-align:left;">OLS 95% CI ({rate_unit})</th>'
+        f'<th style="text-align:left;">Raw HAC 95% CI ({rate_unit})</th>'
+        f'<th style="text-align:left;">Cautious 95% CI ({rate_unit})</th>'
+        f'</tr></thead><tbody>{"".join(rows_html)}</tbody></table></div>'
+    )
+    st.markdown(lens_table, unsafe_allow_html=True)
+
+    floor_html = f"<br>• <b>Cautious floor vs. raw HAC:</b> {' | '.join(floor_notes)}" if floor_notes else ''
+    st.markdown(
+        f'<div class="reality-callout">'
+        f'<b>How to read the Uncertainty Lens (Exploratory Scope):</b><br>'
+        f'• <b>Ratio definition:</b> <code>SE_HAC / SE_OLS</code> measures only the <b>relative change in estimated standard error</b> '
+        f'caused by temporal autocorrelation and heteroscedasticity across annual lags. It is <b>NOT a Type-I error probability</b> '
+        f'and <b>NOT a false-positive rate</b>.<br>'
+        f'• <b>Safeguard distinction:</b> Where active, the cautious rule reports <code>max(SE_OLS, SE_HAC)</code> so finite-sample '
+        f'variance estimates never shrink uncertainty bounds below conventional OLS when <code>SE_HAC / SE_OLS &lt; 1.0</code>. '
+        f'Switch to <i>Raw Newey–West HAC (SE_HAC, unfloored)</i> above to inspect the unfloored HAC interval directly.<br>'
+        f'• <b>Small-sample caveats:</b> With ~30–35 annual observations, lag truncation and asymptotic HAC covariance estimates remain noisy, '
+        f'depend on linear model specification, and are unadjusted for multiple comparisons across cities, variables, or windows.{floor_html}'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_evidence_passport_section(
+    question,
+    parameter,
+    start,
+    end,
+    loc_a,
+    lat_a,
+    lon_a,
+    data_a,
+    loc_b=None,
+    lat_b=None,
+    lon_b=None,
+    data_b=None,
+    trial=None,
+    comp=None,
+    single_site=None,
+    interval_mode='cautious',
+    key_prefix='passport',
+    secondary_md=None,
+    secondary_md_name=None,
+    export_df=None,
+    export_csv_name=None,
+):
+    """Render STEP 3 Evidence Brief one-click PDF export and verifiable SHA-256 provenance."""
+    render_step_banner(
+        3,
+        'CAN I VERIFY THE EVIDENCE?',
+        'One-Click Evidence Passport · Downloadable Scientific Evidence Brief (PDF)',
+        'Every number in this dynamically generated one-page PDF brief matches the active selection, '
+        'uncertainty assumption, NASA API endpoints, and SHA-256 source checksums.',
+        badge='1-Page PDF · Reproducible State · SHA-256 Verified',
+    )
+
+    sha_a = source_sha256(loc_a, data_a)
+    sha_b = source_sha256(loc_b, data_b) if (loc_b and data_b) else None
+    pdf_bytes = build_scientific_evidence_brief_pdf(
+        question=question,
+        parameter=parameter,
+        start=start,
+        end=end,
+        loc_a=loc_a,
+        lat_a=lat_a,
+        lon_a=lon_a,
+        data_a=data_a,
+        loc_b=loc_b,
+        lat_b=lat_b,
+        lon_b=lon_b,
+        data_b=data_b,
+        trial=trial,
+        comp=comp,
+        single_site=single_site,
+        interval_mode=interval_mode,
+    )
+
+    slug_loc = f'{loc_a}_{loc_b}' if loc_b else loc_a
+    slug_safe = ''.join(ch if ch.isalnum() or ch in ('_', '-') else '_' for ch in slug_loc)
+    pdf_filename = f'earthpulse_evidence_brief_{slug_safe}_{parameter}_{start}_{end}.pdf'
+
+    hero_left, hero_right = st.columns([1.35, 1.0])
+    with hero_left:
+        st.markdown(
+            f'<div class="passport-hero">'
+            f'<div class="step-banner-kicker">REPRODUCIBLE ONE-PAGE AUDIT BRIEF</div>'
+            f'<div class="step-title" style="font-size:1.05rem;">{question}</div>'
+            f'<p style="margin:0.2rem 0 0 0;font-size:0.84rem;color:#243b40;">'
+            f'Contains coordinates, MERRA-2 grid resolution caveats, slopes &amp; 95% intervals under '
+            f'<code>{interval_mode}</code> assumptions, limitations, full NASA URLs, and input SHA-256 checksums.'
+            f'</p>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    with hero_right:
+        st.download_button(
+            'Download Scientific Evidence Brief',
+            data=pdf_bytes,
+            file_name=pdf_filename,
+            mime='application/pdf',
+            type='primary',
+            use_container_width=True,
+            key=f'{key_prefix}_pdf_btn',
+        )
+        hash_lines = [f"`{loc_a}` (`{sha_a['scope']}`): `{sha_a['sha256'][:16]}…{sha_a['sha256'][-8:]}`"]
+        if sha_b:
+            hash_lines.append(f"`{loc_b}` (`{sha_b['scope']}`): `{sha_b['sha256'][:16]}…{sha_b['sha256'][-8:]}`")
+        st.caption('SHA-256: ' + ' · '.join(hash_lines))
+
+    dl_cols = st.columns(4)
+    col_idx = 0
+    if export_df is not None and export_csv_name:
+        dl_cols[col_idx].download_button(
+            'Annual Data · CSV',
+            export_df.to_csv(index=False),
+            export_csv_name,
+            'text/csv',
+            use_container_width=True,
+            key=f'{key_prefix}_csv_btn',
+        )
+        col_idx += 1
+    if secondary_md and secondary_md_name:
+        dl_cols[col_idx].download_button(
+            'Evidence Summary · MD',
+            secondary_md,
+            secondary_md_name,
+            'text/markdown',
+            use_container_width=True,
+            key=f'{key_prefix}_md_btn',
+        )
+        col_idx += 1
+    dl_cols[col_idx].download_button(
+        f'{loc_a} NASA · JSON',
+        json.dumps(data_a, indent=2),
+        f'earthpulse_{loc_a}_NASA.json',
+        'application/json',
+        use_container_width=True,
+        key=f'{key_prefix}_json_a_btn',
+    )
+    col_idx += 1
+    if loc_b and data_b is not None and col_idx < 4:
+        dl_cols[col_idx].download_button(
+            f'{loc_b} NASA · JSON',
+            json.dumps(data_b, indent=2),
+            f'earthpulse_{loc_b}_NASA.json',
+            'application/json',
+            use_container_width=True,
+            key=f'{key_prefix}_json_b_btn',
+        )
 
 
 def build_evidence_brief_markdown(comp, loc_a, lat_a, lon_a, loc_b, lat_b, lon_b, data_a, data_b):
@@ -1388,13 +2028,16 @@ def build_trial_verdict_figure(trial, lens_mode):
     )
 
     # Primary Track: Paired Difference D(year) = B - A
+    active_mode = trial.get('interval_mode', 'cautious')
+    primary_ci_name = 'Raw HAC 95% CI (SE_HAC)' if active_mode == 'hac' else 'Cautious 95% CI (HAC / max SE)'
+    primary_ci_hover = 'Raw Newey–West HAC' if active_mode == 'hac' else 'Cautious HAC'
     y_d_base = 1.75
     fig.add_trace(
         go.Scatter(
             x=[slope_d],
             y=[y_d_base + (0.09 if lens_mode == 'both' else 0.0)],
             mode='markers',
-            name='Cautious 95% CI (HAC)',
+            name=primary_ci_name,
             opacity=1.0 if show_cautious else 0.25,
             marker=dict(symbol='star', size=13, color=verdict_color, line=dict(width=1.4, color='#ffffff')),
             error_x=dict(
@@ -1407,7 +2050,7 @@ def build_trial_verdict_figure(trial, lens_mode):
                 width=8,
             ),
             hovertemplate=(
-                f"<b>Paired Difference D = {loc_b} − {loc_a} (Cautious HAC)</b><br>"
+                f"<b>Paired Difference D = {loc_b} − {loc_a} ({primary_ci_hover})</b><br>"
                 f"Slope diff: {format_bound(slope_d)} {rate_unit}<br>"
                 f"95% CI: {format_interval(dr['ci95'], rate_unit)}<br>"
                 f"p = {dr['p_value']:.4g}<extra></extra>"
@@ -1679,7 +2322,9 @@ st.session_state.setdefault('trial_loc_a', 'Casablanca')
 st.session_state.setdefault('trial_loc_b', 'Marrakech')
 st.session_state.setdefault('trial_param', 'T2M')
 st.session_state.setdefault('trial_period', (1991, 2025))
-st.session_state.setdefault('trial_lens', 'Show both: Cautious (HAC) + Conventional (OLS)')
+st.session_state.setdefault('trial_lens', list(LENS_OPTIONS)[0])
+if st.session_state.get('trial_lens') not in LENS_OPTIONS:
+    st.session_state['trial_lens'] = list(LENS_OPTIONS)[0]
 
 
 def _apply_trial_preset(loc_a_v, loc_b_v, param_v, period_v=(1991, 2025)):
@@ -1717,13 +2362,10 @@ elif nav_choice.startswith('Compare'):
 else:
     active_view = 'single'
 
+render_step_ribbon()
+
 if active_view == 'trial':
     trial_loc_options = list(LOCATIONS.keys()) + ['Custom coordinates']
-    lens_map = {
-        'Show both: Cautious (HAC) + Conventional (OLS)': ('cautious', 'both'),
-        'Cautious 95% screen (accounts for time dependence)': ('cautious', 'cautious'),
-        'Conventional 95% OLS (assumes independent years)': ('conventional', 'conventional'),
-    }
 
     tc1, tc2, tc3 = st.columns([1.05, 1.05, 1.3])
     with tc1:
@@ -1755,7 +2397,7 @@ if active_view == 'trial':
         )
 
     start, end = st.session_state['trial_period']
-    interval_mode, whisker_lens = lens_map[st.session_state['trial_lens']]
+    interval_mode, whisker_lens = resolve_lens(st.session_state['trial_lens'])
 
     try:
         with st.spinner('Retrieving NASA POWER records for paired trial…'):
@@ -1856,29 +2498,8 @@ if active_view == 'trial':
                 f"missing paired years {', '.join(map(str, trial['missing_paired']))}."
             )
 
-        if not st.session_state['trial_tested']:
-            # Pre-Trial State: Original Time Series + Separate Unpaired Intervals
-            p_left, p_right = st.columns([1.12, 1.0])
-            with p_left:
-                st.markdown(
-                    f'<div class="chart-header-box">'
-                    f'<div class="chart-header-title">Step 1 · Original Aligned Series &amp; Separate Fits ({trial["unit"]})</div>'
-                    f'<div class="chart-header-sub">Click TEST THE DIFFERENCE above to animate the paired transformation D(year) = {loc_b} − {loc_a}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-                st.plotly_chart(build_comparison_series_figure(v2_comp), use_container_width=True)
-            with p_right:
-                st.markdown(
-                    f'<div class="chart-header-box">'
-                    f'<div class="chart-header-title">Separate Single-Site Intervals ({rate_unit})</div>'
-                    f'<div class="chart-header-sub">Each interval tests one site vs. 0.0; paired testing is needed to compare B against A</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-                st.plotly_chart(build_whisker_figure(v2_comp, whisker_lens), use_container_width=True)
-        else:
-            # Post-Trial State: Animated Verdict Reveal + Transitioned Paired Charts + Challenge Panel + Passport
+        if st.session_state['trial_tested']:
+            # Post-Trial State Hero Reveal
             vcode = trial['verdict_code']
             if vcode == 'positive_difference':
                 v_banner_cls, v_pill_cls = 'verdict-positive', 'verdict-pill-pos'
@@ -1891,7 +2512,6 @@ if active_view == 'trial':
 
             if trial['eligible']:
                 dr = trial['diff_result']
-                ci_txt = format_interval(trial['active_ci'], rate_unit)
                 corr_txt = f"{trial['residual_correlation']:+.2f}" if trial['residual_correlation'] is not None else 'N/A'
                 id_txt = f"{trial['slope_diff_identity_delta']:.1e}" if trial['slope_diff_identity_delta'] is not None else 'N/A'
                 metrics_html = (
@@ -1928,6 +2548,67 @@ if active_view == 'trial':
             )
             st.markdown(verdict_html, unsafe_allow_html=True)
 
+        # --- STEP 1: WHERE IS THE EVIDENCE? ---
+        render_grid_reality_section(
+            loc_a,
+            data_a,
+            lat_a,
+            lon_a,
+            loc_b,
+            data_b,
+            lat_b,
+            lon_b,
+            parameter,
+            start,
+            end,
+            interval_mode=interval_mode,
+        )
+
+        # --- STEP 2: HOW STRONG IS THE EVIDENCE? ---
+        step2_active_desc = {
+            'cautious': 'Cautious max(SE_OLS, SE_HAC) vs. Conventional OLS',
+            'hac': 'Raw Newey–West HAC (SE_HAC) vs. Conventional OLS',
+            'conventional': 'Conventional OLS (independent years)',
+        }.get(interval_mode, interval_mode)
+        render_step_banner(
+            2,
+            'HOW STRONG IS THE EVIDENCE?',
+            'Climate Trends, Paired Difference Trial & Uncertainty Lens',
+            'Inspect aligned trends, challenge the period or uncertainty assumptions, and compare SE_OLS, raw SE_HAC, and cautious max(SE_OLS, SE_HAC).',
+            badge=f'{trial["n_paired"]} paired yr · Exploratory',
+        )
+
+        if not st.session_state['trial_tested']:
+            p_left, p_right = st.columns([1.12, 1.0])
+            with p_left:
+                st.markdown(
+                    f'<div class="chart-header-box">'
+                    f'<div class="chart-header-title">Original Aligned Series &amp; Separate Fits ({trial["unit"]})</div>'
+                    f'<div class="chart-header-sub">Click TEST THE DIFFERENCE above to animate the paired transformation D(year) = {loc_b} − {loc_a}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                st.plotly_chart(build_comparison_series_figure(v2_comp), use_container_width=True)
+            with p_right:
+                st.markdown(
+                    f'<div class="chart-header-box">'
+                    f'<div class="chart-header-title">Separate Single-Site Intervals ({rate_unit})</div>'
+                    f'<div class="chart-header-sub">Each interval tests one site vs. 0.0 ({step2_active_desc})</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                st.plotly_chart(build_whisker_figure(v2_comp, whisker_lens), use_container_width=True)
+
+            render_uncertainty_lens_panel(
+                [(loc_a, sa['result']), (loc_b, sb['result'])],
+                interval_mode,
+                trial['unit'],
+                rate_unit,
+                lens_state_key='trial_lens',
+                show_control=True,
+            )
+            st.caption('Click **⚖ TEST THE DIFFERENCE** above to compute the paired `D(year) = B − A` trial row and animated transition.')
+        else:
             t_left, t_right = st.columns([1.15, 1.0])
             with t_left:
                 st.markdown(
@@ -1942,7 +2623,7 @@ if active_view == 'trial':
                 st.markdown(
                     f'<div class="chart-header-box">'
                     f'<div class="chart-header-title">Trial Zero-Line Verdict Interval ({rate_unit})</div>'
-                    f'<div class="chart-header-sub">Zero reference line (0.0 = no slope difference) · Cautious HAC vs. Conventional OLS</div>'
+                    f'<div class="chart-header-sub">Zero reference line (0.0 = no slope difference) · {step2_active_desc}</div>'
                     f'</div>',
                     unsafe_allow_html=True,
                 )
@@ -1967,12 +2648,8 @@ if active_view == 'trial':
                     )
                 with ch2:
                     st.radio(
-                        'OLS vs. Newey–West HAC uncertainty lens',
-                        [
-                            'Show both: Cautious (HAC) + Conventional (OLS)',
-                            'Cautious 95% screen (accounts for time dependence)',
-                            'Conventional 95% OLS (assumes independent years)',
-                        ],
+                        'Uncertainty assumption (OLS vs. raw HAC vs. cautious max)',
+                        list(LENS_OPTIONS),
                         horizontal=True,
                         key='trial_lens',
                     )
@@ -2017,26 +2694,23 @@ if active_view == 'trial':
                         dr = trial['diff_result']
                         ra = trial['aligned_site_a_result']
                         rb = trial['aligned_site_b_result']
-                        hac_cls = 'badge-clear' if trial['cautious_excludes_zero'] else 'badge-cautious'
-                        hac_txt = 'Excludes 0' if trial['cautious_excludes_zero'] else 'Crosses 0'
-                        ols_cls = 'badge-clear' if trial['iid_excludes_zero'] else 'badge-cautious'
-                        ols_txt = 'Excludes 0' if trial['iid_excludes_zero'] else 'Crosses 0'
-                        sens_html = (
-                            f'<p style="font-size:0.9rem;color:#243b40;margin:0.25rem 0 0.5rem 0;">{trial["time_dependence_note"]}</p>'
-                            f'<div class="table-wrapper" tabindex="0" role="region" aria-label="Paired difference OLS versus HAC sensitivity">'
-                            f'<table><thead><tr>'
-                            f'<th>Paired Test Metric ({dr["start"]}–{dr["end"]}, n={dr["n"]})</th>'
-                            f'<th>Conventional OLS (i.i.d.)</th>'
-                            f'<th>Cautious HAC ({dr["hac_lags"]} lags / max SE)</th>'
-                            f'<th>OLS Identity Verification</th>'
-                            f'</tr></thead><tbody><tr>'
-                            f'<td><b>D = {loc_b} − {loc_a}</b> ({format_bound(dr["slope_decade"])} {rate_unit})</td>'
-                            f'<td>{format_interval(dr["iid_ci95"], rate_unit)} · p = {dr["iid_p"]:.4g} <span class="{ols_cls}">{ols_txt}</span></td>'
-                            f'<td><b>{format_interval(dr["ci95"], rate_unit)}</b> · p = {dr["p_value"]:.4g} <span class="{hac_cls}">{hac_txt}</span></td>'
-                            f'<td>slope(B−A): {dr["slope_decade"]:+.6f} vs. ({rb["slope_decade"]:+.6f}) − ({ra["slope_decade"]:+.6f}) = {rb["slope_decade"] - ra["slope_decade"]:+.6f} (|Δ|={trial["slope_diff_identity_delta"]:.1e})</td>'
-                            f'</tr></tbody></table></div>'
+                        render_uncertainty_lens_panel(
+                            [
+                                (f'Paired D = {loc_b} − {loc_a}', dr),
+                                (f'{loc_b} (aligned)', rb),
+                                (f'{loc_a} (aligned)', ra),
+                            ],
+                            interval_mode,
+                            trial['unit'],
+                            rate_unit,
+                            show_control=False,
                         )
-                        st.markdown(sens_html, unsafe_allow_html=True)
+                        st.caption(
+                            f"**OLS Identity Proof:** `slope(B − A) = {dr['slope_decade']:+.6f}` vs. "
+                            f"`({rb['slope_decade']:+.6f}) − ({ra['slope_decade']:+.6f}) = "
+                            f"{rb['slope_decade'] - ra['slope_decade']:+.6f}` "
+                            f"(`|Δ| = {trial['slope_diff_identity_delta']:.1e}`)."
+                        )
                     else:
                         st.warning(trial['interpretation'])
 
@@ -2070,43 +2744,53 @@ if active_view == 'trial':
                     else:
                         st.info('No paired annual values available in this window.')
 
-            # --- Evidence Passport & Provenance Downloads ---
-            passport_md = build_evidence_passport_markdown(trial, loc_a, lat_a, lon_a, loc_b, lat_b, lon_b, data_a, data_b)
-            provenance_obj = build_trial_provenance_payload(trial, loc_a, lat_a, lon_a, loc_b, lat_b, lon_b, data_a, data_b)
-            export_trial_df = trial['merged'].copy()
-            export_trial_df['location_a'] = loc_a
-            export_trial_df['location_b'] = loc_b
-            export_trial_df['parameter'] = parameter
-            export_trial_df['units'] = trial['unit']
-            export_trial_df['source'] = 'NASA POWER / MERRA-2'
+        # --- STEP 3: CAN I VERIFY THE EVIDENCE? (Available both pre- and post-trial) ---
+        passport_md = build_evidence_passport_markdown(trial, loc_a, lat_a, lon_a, loc_b, lat_b, lon_b, data_a, data_b)
+        provenance_obj = build_trial_provenance_payload(trial, loc_a, lat_a, lon_a, loc_b, lat_b, lon_b, data_a, data_b)
+        export_trial_df = trial['merged'].copy()
+        export_trial_df['location_a'] = loc_a
+        export_trial_df['location_b'] = loc_b
+        export_trial_df['parameter'] = parameter
+        export_trial_df['units'] = trial['unit']
+        export_trial_df['source'] = 'NASA POWER / MERRA-2'
 
-            pd1, pd2, pd3 = st.columns(3)
-            pd1.download_button(
-                'Download Evidence Passport · MD',
-                passport_md,
-                f'earthpulse_trial_passport_{loc_a}_{loc_b}_{parameter}_{start}_{end}.md',
-                'text/markdown',
-            )
-            pd2.download_button(
-                'Download Paired Series D(year) · CSV',
-                export_trial_df.to_csv(index=False),
-                f'earthpulse_trial_series_{loc_a}_{loc_b}_{parameter}_{start}_{end}.csv',
-                'text/csv',
-            )
-            pd3.download_button(
+        render_evidence_passport_section(
+            question=format_trial_question(loc_a, loc_b, parameter),
+            parameter=parameter,
+            start=start,
+            end=end,
+            loc_a=loc_a,
+            lat_a=lat_a,
+            lon_a=lon_a,
+            data_a=data_a,
+            loc_b=loc_b,
+            lat_b=lat_b,
+            lon_b=lon_b,
+            data_b=data_b,
+            trial=trial,
+            comp=v2_comp,
+            interval_mode=interval_mode,
+            key_prefix='trial_passport',
+            secondary_md=passport_md,
+            secondary_md_name=f'earthpulse_trial_passport_{loc_a}_{loc_b}_{parameter}_{start}_{end}.md',
+            export_df=export_trial_df,
+            export_csv_name=f'earthpulse_trial_series_{loc_a}_{loc_b}_{parameter}_{start}_{end}.csv',
+        )
+
+        with st.expander('NASA POWER source metadata, trial provenance JSON & exact API request links'):
+            st.download_button(
                 'Download Trial Provenance · JSON',
                 json.dumps(provenance_obj, indent=2),
                 f'earthpulse_trial_provenance_{loc_a}_{loc_b}_{parameter}_{start}_{end}.json',
                 'application/json',
+                key='trial_prov_json_btn',
             )
-
-            with st.expander('NASA POWER source metadata & exact API request links'):
-                st.json(provenance_obj)
-                l1, l2 = st.columns(2)
-                if data_a.get('_earthpulse', {}).get('request_url'):
-                    l1.link_button(f'Open exact NASA request · {loc_a}', data_a['_earthpulse']['request_url'])
-                if data_b.get('_earthpulse', {}).get('request_url'):
-                    l2.link_button(f'Open exact NASA request · {loc_b}', data_b['_earthpulse']['request_url'])
+            st.json(provenance_obj)
+            l1, l2 = st.columns(2)
+            if data_a.get('_earthpulse', {}).get('request_url'):
+                l1.link_button(f'Open exact NASA request · {loc_a}', data_a['_earthpulse']['request_url'])
+            if data_b.get('_earthpulse', {}).get('request_url'):
+                l2.link_button(f'Open exact NASA request · {loc_b}', data_b['_earthpulse']['request_url'])
 
     except Exception as error:
         st.error(f'Unable to complete Climate Trial: {error}')
@@ -2114,11 +2798,6 @@ if active_view == 'trial':
 
 elif active_view == 'compare':
     loc_names = list(LOCATIONS.keys())
-    lens_map = {
-        'Show both: Cautious (HAC) + Conventional (OLS)': ('cautious', 'both'),
-        'Cautious 95% screen (accounts for time dependence)': ('cautious', 'cautious'),
-        'Conventional 95% OLS (assumes independent years)': ('conventional', 'conventional'),
-    }
 
     headline_container = st.container()
 
@@ -2144,19 +2823,17 @@ elif active_view == 'compare':
             key='comp_period',
         )
 
+    st.session_state.setdefault('comp_lens', list(LENS_OPTIONS)[0])
+    if st.session_state.get('comp_lens') not in LENS_OPTIONS:
+        st.session_state['comp_lens'] = list(LENS_OPTIONS)[0]
     lens_label = st.radio(
-        'What changes when we account for time dependence?',
-        [
-            'Show both: Cautious (HAC) + Conventional (OLS)',
-            'Cautious 95% screen (accounts for time dependence)',
-            'Conventional 95% OLS (assumes independent years)',
-        ],
-        index=0,
+        'What changes when we account for time dependence? · Switch uncertainty assumption',
+        list(LENS_OPTIONS),
         horizontal=True,
         key='comp_lens',
     )
 
-    interval_mode, whisker_lens = lens_map[lens_label]
+    interval_mode, whisker_lens = resolve_lens(lens_label)
     start, end = period
 
     try:
@@ -2200,6 +2877,36 @@ elif active_view == 'compare':
         if not comp['both_eligible']:
             st.warning(f"Ineligible for linear trend inference: {comp['second_line']}")
 
+        # --- STEP 1: WHERE IS THE EVIDENCE? ---
+        render_grid_reality_section(
+            loc_a,
+            data_a,
+            lat_a,
+            lon_a,
+            loc_b,
+            data_b,
+            lat_b,
+            lon_b,
+            parameter,
+            start,
+            end,
+            interval_mode=interval_mode,
+        )
+
+        # --- STEP 2: HOW STRONG IS THE EVIDENCE? ---
+        active_lens_sub = {
+            'cautious': 'Cautious max(SE_OLS, SE_HAC) vs. Conventional OLS',
+            'hac': 'Raw Newey–West HAC (SE_HAC) vs. Conventional OLS',
+            'conventional': 'Conventional OLS (independent years)',
+        }.get(interval_mode, interval_mode)
+        render_step_banner(
+            2,
+            'HOW STRONG IS THE EVIDENCE?',
+            'Trend Verdict Charts, Uncertainty Lens & Stability Checks',
+            'Evaluate time-series slopes alongside OLS vs. raw Newey–West HAC vs. cautious max(SE_OLS, SE_HAC) intervals.',
+            badge=f'{start}–{end} · {interval_mode.upper()}',
+        )
+
         # --- Side-by-Side Visual Reveal ---
         chart_left, chart_right = st.columns([1.12, 1.0])
         with chart_left:
@@ -2215,57 +2922,25 @@ elif active_view == 'compare':
             st.markdown(
                 f'<div class="chart-header-box">'
                 f'<div class="chart-header-title">Slope Verdict &amp; Exploratory 95% Uncertainty Bars ({comp["rate_unit"]})</div>'
-                f'<div class="chart-header-sub">Zero reference line (0.0) · Cautious HAC screen vs. Conventional OLS</div>'
+                f'<div class="chart-header-sub">Zero reference line (0.0) · {active_lens_sub}</div>'
                 f'</div>',
                 unsafe_allow_html=True,
             )
             st.plotly_chart(build_whisker_figure(comp, whisker_lens), use_container_width=True)
 
-        # --- Compact Evidence Panel: "What changes when we account for time dependence?" ---
+        # --- Uncertainty Lens Table (replaces old summary table without duplicating charts) ---
         sa, sb = comp['site_a'], comp['site_b']
         rate_unit = comp['rate_unit']
         if comp['both_eligible']:
             ra, rb = sa['result'], sb['result']
-
-            def _badge(excludes):
-                cls = 'badge-clear' if excludes else 'badge-cautious'
-                txt = 'Excludes 0' if excludes else 'Crosses 0'
-                return f'<span class="{cls}">{txt}</span>'
-
-            table_html = (
-                f'<div class="evidence-panel">'
-                f'<h4>What changes when we account for time dependence? · Exploratory 95% Interval Comparison ({start}–{end}, n = {ra["n"]} complete years)</h4>'
-                f'<p>{comp["time_dependence_note"]}</p>'
-                f'<table class="verdict-table" aria-label="Comparison of conventional OLS and cautious HAC-adjusted trend intervals">'
-                f'<thead><tr>'
-                f'<th>Grid Representation (MERRA-2)</th>'
-                f'<th>Slope / Decade ({rate_unit})</th>'
-                f'<th>Conventional 95% CI (OLS, independent years)</th>'
-                f'<th>Cautious 95% Screen (Larger of OLS &amp; HAC, {ra["hac_lags"]} lags)</th>'
-                f'<th>Residual Lag-1 (ρ₁) &amp; R²</th>'
-                f'</tr></thead>'
-                f'<tbody>'
-                f'<tr>'
-                f'<td><b>● {loc_a}</b> ({lat_a:.2f}°N, {lon_a:.2f}°E)</td>'
-                f'<td><b>{format_bound(ra["slope_decade"])}</b> <span style="color:#52656b;font-size:0.81rem;">({ra["slope_decade"]:+.5f})</span></td>'
-                f'<td>{format_interval(ra["iid_ci95"], rate_unit)} (p = {ra["iid_p"]:.4g}) {_badge(sa["iid_excludes_zero"])}</td>'
-                f'<td><b>{format_interval(ra["ci95"], rate_unit)}</b> <span style="color:#52656b;font-size:0.81rem;">[{ra["ci95"][0]:+.5f}, {ra["ci95"][1]:+.5f}]</span> (p = {ra["p_value"]:.4g}) {_badge(sa["cautious_excludes_zero"])}</td>'
-                f'<td>ρ₁ = {ra["residual_lag1"]:+.2f} · R² = {ra["r_squared"]:.2f}</td>'
-                f'</tr>'
-                f'<tr>'
-                f'<td><b>◆ {loc_b}</b> ({lat_b:.2f}°N, {lon_b:.2f}°E)</td>'
-                f'<td><b>{format_bound(rb["slope_decade"])}</b> <span style="color:#52656b;font-size:0.81rem;">({rb["slope_decade"]:+.5f})</span></td>'
-                f'<td>{format_interval(rb["iid_ci95"], rate_unit)} (p = {rb["iid_p"]:.4g}) {_badge(sb["iid_excludes_zero"])}</td>'
-                f'<td><b>{format_interval(rb["ci95"], rate_unit)}</b> <span style="color:#52656b;font-size:0.81rem;">[{rb["ci95"][0]:+.5f}, {rb["ci95"][1]:+.5f}]</span> (p = {rb["p_value"]:.4g}) {_badge(sb["cautious_excludes_zero"])}</td>'
-                f'<td>ρ₁ = {rb["residual_lag1"]:+.2f} · R² = {rb["r_squared"]:.2f}</td>'
-                f'</tr>'
-                f'</tbody></table>'
-                f'<div class="caveat-strip">'
-                f'<b>Interpretation boundary:</b> {comp["overlap_note"]} Source: {source_tag}.'
-                f'</div>'
-                f'</div>'
+            render_uncertainty_lens_panel(
+                [(loc_a, ra), (loc_b, rb)],
+                interval_mode,
+                comp['unit'],
+                rate_unit,
+                show_control=False,
             )
-            st.markdown(table_html, unsafe_allow_html=True)
+            st.caption(f"**Interpretation boundary:** {comp['overlap_note']} Source: {source_tag}.")
         else:
             ineligible_html = (
                 f'<div class="evidence-panel">'
@@ -2278,12 +2953,11 @@ elif active_view == 'compare':
             )
             st.markdown(ineligible_html, unsafe_allow_html=True)
 
-        # --- Interactive Scientific Diagnostics (Deep-Dive Tabs) ---
-        tab_resid, tab_matrix, tab_window, tab_map = st.tabs([
+        # --- Interactive Scientific Diagnostics (Deep-Dive Tabs; Grid Map already rendered in STEP 1) ---
+        tab_resid, tab_matrix, tab_window = st.tabs([
             '1. Residual Persistence (ρ₁)',
             '2. Four Moroccan Regimes',
             '3. Window Stability (30+ yr)',
-            '4. Morocco Grid Map & HAC',
         ])
 
         with tab_resid:
@@ -2370,46 +3044,6 @@ elif active_view == 'compare':
             else:
                 st.info('Switch Data access to "Verified bundled NASA snapshot" (1991–2025) to compare rolling 30+ year windows.')
 
-        with tab_map:
-            map_start, map_end = max(1991, start), min(2025, end)
-            m_col1, m_col2 = st.columns([1.15, 1.0])
-            with m_col1:
-                st.markdown(
-                    f'<div class="chart-header-box">'
-                    f'<div class="chart-header-title">MERRA-2 Grid-Cell Locations Across Morocco (Bundled {map_start}–{map_end})</div>'
-                    f'<div class="chart-header-sub">Teal circles (●) cross zero; ochre diamonds (◆) exclude zero under cautious HAC screen</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-                st.plotly_chart(build_morocco_grid_map(parameter, map_start, map_end), use_container_width=True)
-            with m_col2:
-                st.markdown('#### Standard Error Inflation Factor (HAC vs. OLS)')
-                if comp['both_eligible']:
-                    ra, rb = sa['result'], sb['result']
-                    w_iid_a = ra['iid_ci95'][1] - ra['iid_ci95'][0]
-                    w_hac_a = ra['ci95'][1] - ra['ci95'][0]
-                    inf_a = (w_hac_a / w_iid_a) if w_iid_a > 0 else 1.0
-
-                    w_iid_b = rb['iid_ci95'][1] - rb['iid_ci95'][0]
-                    w_hac_b = rb['ci95'][1] - rb['ci95'][0]
-                    inf_b = (w_hac_b / w_iid_b) if w_iid_b > 0 else 1.0
-
-                    st.write(
-                        f"- **{loc_a}**: Cautious interval width is **{inf_a:.2f}×** the conventional OLS width "
-                        f"(`{w_hac_a:.3f}` vs. `{w_iid_a:.3f} {rate_unit}`, driven by lag-1 autocorrelation "
-                        f"**ρ₁ = {ra['residual_lag1']:+.2f}**)."
-                    )
-                    st.write(
-                        f"- **{loc_b}**: Cautious interval width is **{inf_b:.2f}×** the conventional OLS width "
-                        f"(`{w_hac_b:.3f}` vs. `{w_iid_b:.3f} {rate_unit}`, **ρ₁ = {rb['residual_lag1']:+.2f}**)."
-                    )
-                    st.caption(
-                        'Each NASA POWER point query returns the MERRA-2 reanalysis value for its ~0.5° × 0.625° '
-                        'regional grid cell, smoothing local coastal breezes and mountain elevation gradients.'
-                    )
-                else:
-                    st.info('Select a 30+ year consecutive window to compute HAC/OLS uncertainty inflation factors.')
-
         # --- Methodological Chain of Evidence & Limits ---
         col_ev, col_lim = st.columns([1.15, 1.0])
         with col_ev:
@@ -2473,7 +3107,6 @@ elif active_view == 'compare':
             if data_b.get('_earthpulse', {}).get('request_url'):
                 link_col2.link_button(f'Open exact NASA request · {loc_b}', data_b['_earthpulse']['request_url'])
 
-        dl1, dl2, dl3, dl4 = st.columns(4)
         export_df = pd.concat(
             [
                 sa['frame'].assign(
@@ -2496,29 +3129,26 @@ elif active_view == 'compare':
             ignore_index=True,
         )
         brief_md = build_evidence_brief_markdown(comp, loc_a, lat_a, lon_a, loc_b, lat_b, lon_b, data_a, data_b)
-        dl1.download_button(
-            f'Download annual data · CSV ({loc_a} & {loc_b})',
-            export_df.to_csv(index=False),
-            f'earthpulse_compare_{loc_a}_{loc_b}_{parameter}_{start}_{end}.csv',
-            'text/csv',
-        )
-        dl2.download_button(
-            'Download Evidence Brief · MD',
-            brief_md,
-            f'earthpulse_brief_{loc_a}_{loc_b}_{parameter}_{start}_{end}.md',
-            'text/markdown',
-        )
-        dl3.download_button(
-            f'Download {loc_a} NASA · JSON',
-            json.dumps(data_a, indent=2),
-            f'earthpulse_{loc_a}_NASA.json',
-            'application/json',
-        )
-        dl4.download_button(
-            f'Download {loc_b} NASA · JSON',
-            json.dumps(data_b, indent=2),
-            f'earthpulse_{loc_b}_NASA.json',
-            'application/json',
+        render_evidence_passport_section(
+            question=f"How do {VARIABLES[parameter][0].lower()} trends compare between {loc_a} and {loc_b} ({start}–{end})?",
+            parameter=parameter,
+            start=start,
+            end=end,
+            loc_a=loc_a,
+            lat_a=lat_a,
+            lon_a=lon_a,
+            data_a=data_a,
+            loc_b=loc_b,
+            lat_b=lat_b,
+            lon_b=lon_b,
+            data_b=data_b,
+            comp=comp,
+            interval_mode=interval_mode,
+            key_prefix='compare_passport',
+            secondary_md=brief_md,
+            secondary_md_name=f'earthpulse_brief_{loc_a}_{loc_b}_{parameter}_{start}_{end}.md',
+            export_df=export_df,
+            export_csv_name=f'earthpulse_compare_{loc_a}_{loc_b}_{parameter}_{start}_{end}.csv',
         )
 
     except Exception as error:
@@ -2554,12 +3184,24 @@ else:
     with s_col3:
         period = st.slider('Completed calendar years', 1981, 2025, (1991, 2025), key='single_period')
 
+    st.session_state.setdefault('single_lens', list(LENS_OPTIONS)[0])
+    if st.session_state.get('single_lens') not in LENS_OPTIONS:
+        st.session_state['single_lens'] = list(LENS_OPTIONS)[0]
+    single_lens_label = st.radio(
+        'Uncertainty assumption (OLS vs. raw HAC vs. cautious max)',
+        list(LENS_OPTIONS),
+        horizontal=True,
+        key='single_lens',
+    )
+    interval_mode, _ = resolve_lens(single_lens_label)
+
     start, end = period
     try:
         with st.spinner('Retrieving NASA POWER climate estimates…'):
             data, bundled = load_location_data(location, lat, lon, start, end, data_mode)
 
-        frame, omitted = annual_series(data, parameter, start, end)
+        site_eval = evaluate_site(location, data, parameter, start, end, interval_mode=interval_mode)
+        frame, omitted, result = site_eval['frame'], site_eval['omitted'], site_eval['result']
         name, unit = VARIABLES[parameter]
         rate_unit = f"{unit}/decade"
         st.caption(
@@ -2568,17 +3210,44 @@ else:
         )
         if omitted:
             st.warning('Incomplete years excluded: ' + ', '.join(map(str, omitted)) + '. No values have been interpolated.')
+        if not site_eval['eligible'] and site_eval['error']:
+            st.warning(site_eval['error'])
 
-        result = None
-        try:
-            result = trend(frame)
-        except ValueError as error:
-            st.warning(str(error))
+        # --- STEP 1: WHERE IS THE EVIDENCE? ---
+        render_grid_reality_section(
+            location,
+            data,
+            lat,
+            lon,
+            None,
+            None,
+            None,
+            None,
+            parameter,
+            start,
+            end,
+            interval_mode=interval_mode,
+        )
+
+        # --- STEP 2: HOW STRONG IS THE EVIDENCE? ---
+        active_ci_label = {
+            'cautious': 'Cautious 95% CI (max SE)',
+            'hac': 'Raw HAC 95% CI (SE_HAC)',
+            'conventional': 'Conventional 95% CI (OLS)',
+        }.get(interval_mode, '95% CI')
+        render_step_banner(
+            2,
+            'HOW STRONG IS THE EVIDENCE?',
+            'Single-Location Trend Trajectory & Uncertainty Lens',
+            'Inspect the annual series, linear slope, and OLS vs. raw HAC vs. cautious max(SE_OLS, SE_HAC) intervals.',
+            badge=f'{start}–{end} · {interval_mode.upper()}',
+        )
 
         if result:
+            active_ci = result['ci95'] if interval_mode != 'conventional' else result['iid_ci95']
             c1, c2, c3, c4 = st.columns([1, 1.35, 1.35, 0.8])
             c1.metric('Estimated slope / decade', f"{format_bound(result['slope_decade'])} {unit}")
-            c2.metric('Cautious 95% CI (HAC / max SE)', format_interval(result['ci95'], unit))
+            c2.metric(active_ci_label, format_interval(active_ci, unit))
             c3.metric('Conventional 95% CI (OLS)', format_interval(result['iid_ci95'], unit))
             c4.metric('Complete years', str(result['n']))
 
@@ -2618,7 +3287,7 @@ else:
         st.plotly_chart(fig, use_container_width=True)
 
         if result:
-            sig = excludes_zero(result['ci95'])
+            sig = site_eval['active_excludes_zero']
             direction = 'increase' if result['slope_decade'] > 0 else 'decrease'
             st.subheader('What the evidence says')
             st.write(
@@ -2626,17 +3295,18 @@ else:
                 f"{direction} of {abs(result['slope_decade']):.2f} {unit} per decade ({result['slope_decade']:+.5f} {rate_unit}) "
                 f"during {result['start']}–{result['end']} ({result['n']} complete years). "
                 + (
-                    f"The cautious exploratory 95% interval ({format_interval(result['ci95'], rate_unit)}) excludes zero."
+                    f"Under the `{interval_mode}` assumption, the exploratory 95% interval ({format_interval(active_ci, rate_unit)}) excludes zero."
                     if sig
-                    else f"The cautious exploratory 95% interval ({format_interval(result['ci95'], rate_unit)}) includes zero: "
+                    else f"Under the `{interval_mode}` assumption, the exploratory 95% interval ({format_interval(active_ci, rate_unit)}) includes zero: "
                     "this analysis does not establish a consistent linear trend."
                 )
             )
-            st.caption(
-                f"Exploratory two-sided cautious p = {result['p_value']:.4g} (conventional OLS 95% CI: "
-                f"{format_interval(result['iid_ci95'], rate_unit)}, OLS p = {result['iid_p']:.4g}, "
-                f"residual lag-1 ρ₁ = {result['residual_lag1']:+.2f}). "
-                f"We use the larger standard error from ordinary and Newey–West HAC regression ({result['hac_lags']} annual lags)."
+            render_uncertainty_lens_panel(
+                [(location, result)],
+                interval_mode,
+                unit,
+                rate_unit,
+                show_control=False,
             )
 
         left, right = st.columns([1.2, 1])
@@ -2677,7 +3347,6 @@ else:
             if data.get('_earthpulse', {}).get('request_url'):
                 st.link_button('Open the exact NASA request', data['_earthpulse']['request_url'])
 
-        a, b = st.columns(2)
         export = frame.assign(
             parameter=parameter,
             units=unit,
@@ -2685,17 +3354,20 @@ else:
             longitude=lon,
             source='NASA POWER / MERRA-2',
         )
-        a.download_button(
-            'Download annual data · CSV',
-            export.to_csv(index=False),
-            f'earthpulse_{location}_{parameter}_{start}_{end}.csv',
-            'text/csv',
-        )
-        b.download_button(
-            'Download source response · JSON',
-            json.dumps(data, indent=2),
-            f'earthpulse_{location}_NASA.json',
-            'application/json',
+        render_evidence_passport_section(
+            question=f"Is {name.lower()} changing at {location} ({start}–{end})?",
+            parameter=parameter,
+            start=start,
+            end=end,
+            loc_a=location,
+            lat_a=lat,
+            lon_a=lon,
+            data_a=data,
+            single_site=site_eval,
+            interval_mode=interval_mode,
+            key_prefix='single_passport',
+            export_df=export,
+            export_csv_name=f'earthpulse_{location}_{parameter}_{start}_{end}.csv',
         )
     except Exception as error:
         st.error(f'Unable to complete this investigation: {error}')

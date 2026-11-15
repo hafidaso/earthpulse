@@ -5,7 +5,7 @@ An independent 2026 NASA Space Apps project for *“Be An Earth System Trend Det
 
 > **Tagline**: *Put climate claims on trial.*
 
-[Open the live EarthPulse dashboard](https://earthpulse-labs-hafidaso.streamlit.app/) · [Eight-slide demo (`EarthPulse-Demo.pdf`)](EarthPulse-Demo.pdf)
+[Open the live EarthPulse dashboard](https://earthpulse-labs-hafidaso.streamlit.app/) · [Nine-slide demo (`EarthPulse-Demo.pdf`)](EarthPulse-Demo.pdf)
 
 ![EarthPulse V3 — The Climate Trial (Casablanca vs. Marrakech T2M, 1991–2025)](screenshots/earthpulse_v3_climate_trial.png)
 
@@ -28,8 +28,12 @@ V2 established why separate site confidence intervals can flip when residual tim
 
 ### 2. Animated Transformation & Challenge the Verdict Panel
 - **Central `TEST THE DIFFERENCE` Action & Plotly Morph**: Reveals the paired verdict card and animates smoothly between centered original trajectories (`A − Ā`, `B − B̄`) and the paired annual difference series `D(year) = B − A` alongside a zero-line verdict whisker plot.
-- **Challenge the Verdict (Exploratory Sensitivity Panel)**: Adjust the analysis period (`1981–2025`, enforcing the 30-consecutive-complete-years rule), toggle between cautious Newey–West HAC and conventional OLS intervals, run preset claims, verify the OLS difference identity, and inspect all year-to-year `D(year)` values.
-- **Evidence Passport**: Download a reproducible **Evidence Passport (`.md`)**, **Paired Series (`.csv`)**, or **Trial Provenance (`.json`)** containing chosen locations, exact NASA POWER API request URLs, analysis dates, slope difference, uncertainty intervals, and methodology guardrails.
+- **Challenge the Verdict (Exploratory Sensitivity Panel)**: Adjust the analysis period (`1981–2025`, enforcing the 30-consecutive-complete-years rule), switch between uncertainty assumptions (`Compare Cautious + OLS`, `Cautious safeguard`, `Raw Newey–West HAC`, `Conventional OLS`), run preset claims, verify the OLS difference identity, and inspect all year-to-year `D(year)` values.
+
+### 3. Cohesive Three-Step Scientific Workflow (Features 1–3)
+- **STEP 1 — Where Is the Evidence? (*The Grid-Cell Reality Map*)**: Interactive Morocco terrain map displaying Casablanca, Rabat, Marrakech, and Ouarzazate alongside selected query coordinates, coastal Atlantic & schematic High/Middle Atlas Mountains context, explicitly labeled approximate `0.5° lat × 0.625° lon` (~56 km × ~58–59 km at `31°–34°N`) MERRA-2 resolution boxes (since NASA POWER point JSON `geometry.type == "Point"` omits exact polygon corners), and coarse metadata elevation (`152.91 m` Casablanca, `836.94 m` Marrakech) with explicit station-vs-grid caveats and zero unsupported elevation downscaling.
+- **STEP 2 — How Strong Is the Evidence? (*The Uncertainty Lens*)**: Interactive tabular comparison of conventional `SE_OLS`, raw Newey–West `SE_HAC` (`L` annual Bartlett lags), the `SE_HAC / SE_OLS` standard-error change ratio (`0.81×` paired D, `1.20×` Marrakech, `1.52×` Casablanca for `T2M`, `1991–2025`), and the cautious `max(SE_OLS, SE_HAC)` safeguard alongside OLS / Raw HAC / Cautious 95% intervals and zero-line status. Explicitly documents that **`SE_HAC / SE_OLS` is NOT a Type-I error probability or false-positive rate** and distinguishes unfloored raw `SE_HAC` from `max(SE_OLS, SE_HAC)`.
+- **STEP 3 — Can I Verify the Evidence? (*One-Click Evidence Passport PDF*)**: Primary **`Download Scientific Evidence Brief`** button (`brief_pdf.py`, ReportLab) producing a downloadable **1-page A4 PDF** directly from the currently active selection—complete with investigation question, city coordinates, MERRA-2 resolution caveats, measured slopes, OLS/HAC/Cautious CIs, derived verdict, limitations, exact NASA API request URLs, UTC generation timestamp, author/project attribution, and SHA-256 checksums matching unaltered bundled snapshots or canonical live NASA JSON payloads (plus secondary `.csv`, `.md`, and `.json` exports).
 
 ---
 
@@ -46,11 +50,19 @@ V2 established why separate site confidence intervals can flip when residual tim
 
 ---
 
-![EarthPulse V2 — The Trend Verdict](screenshots/earthpulse_v2_desktop.png)
+![EarthPulse V3 — The Climate Trial Hero & Derived Verdict](screenshots/earthpulse_v3_verdict_banner.png)
 
-*Interactive Spatial Grid Map & HAC Standard Error Inflation Diagnostics (preserved in V2 mode):*
+*STEP 1 Grid-Cell Reality Map (`0.5° × 0.625°` MERRA-2 Resolution & Coastal/Atlas Context) & STEP 2 Uncertainty Lens (`SE_OLS`, raw `SE_HAC`, `SE_HAC / SE_OLS` ratio & `max(SE_OLS, SE_HAC)`):*
 
-![EarthPulse V2 — Morocco Spatial Grid Map & HAC Inflation Factor](screenshots/earthpulse_v2_morocco_map.png)
+![EarthPulse V3 — STEP 1 Grid-Cell Reality Map](screenshots/earthpulse_v3_grid_reality_map.png)
+
+![EarthPulse V3 — STEP 2 Uncertainty Lens](screenshots/earthpulse_v3_uncertainty_lens.png)
+
+*STEP 3 One-Click Scientific Evidence Brief (1-Page PDF Passport & SHA-256 Checksums):*
+
+![EarthPulse V3 — STEP 3 Evidence Passport UI](screenshots/earthpulse_v3_evidence_passport.png)
+
+![EarthPulse V3 — One-Page Scientific Evidence Brief PDF Output](screenshots/earthpulse_evidence_brief_sample.png)
 
 ---
 
@@ -68,11 +80,13 @@ A fitted trend line on a climate chart always has a slope—even when year-to-ye
 
 ```sh
 python -m pip install -r requirements.txt
-python -m pytest -q
+python -m pytest -v
 python -m streamlit run app.py
 ```
 
-The four bundled NASA POWER responses (`Casablanca`, `Rabat`, `Marrakech`, `Ouarzazate`) cover **1991–2025** (`35` complete calendar years) and run 100% offline for instant demo reliability. Custom global coordinates (`Latitude`, `Longitude`) and earlier calendar years (`1981–1990`) query the **NASA POWER Monthly API** live with 24-hour caching.
+All `19` unit and integration tests (`test_analysis.py`) run offline without network calls. The four bundled NASA POWER responses (`Casablanca`, `Rabat`, `Marrakech`, `Ouarzazate`) cover **1991–2025** (`35` complete calendar years) for instant demo reliability; custom coordinates and earlier years (`1981–1990`) query the NASA POWER Monthly API live with 24-hour caching.
+
+Core codebase: `app.py` (Streamlit UI & Plotly visualizations), `analysis.py` (NASA aggregation, OLS/HAC inference, paired Climate Trial, grid metadata, Uncertainty Lens & SHA-256 checks), `brief_pdf.py` (one-page ReportLab PDF Evidence Brief generator), and `test_analysis.py` (`19` regression & PDF checks).
 
 ---
 
