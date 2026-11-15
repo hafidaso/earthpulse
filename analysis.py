@@ -43,14 +43,94 @@ VARIABLES = {
     'PRECTOTCORR': ('Annual precipitation', 'mm/year'),
 }
 
+_PARAM_SPECS = {
+    'T2M': {
+        'label': 'Temperature at 2 metres',
+        'unit': '°C',
+        'seasonal_unit': '°C',
+        'nasa_unit': 'C',
+        'agg': 'mean',
+        'min_val': None,
+        'max_val': None,
+        'category': 'Temperature',
+        'question': 'Is annual mean air temperature warming?',
+    },
+    'PRECTOTCORR': {
+        'label': 'Annual precipitation',
+        'unit': 'mm/year',
+        'seasonal_unit': 'mm/season',
+        'nasa_unit': 'mm/day',
+        'agg': 'sum',
+        'min_val': 0.0,
+        'max_val': None,
+        'category': 'Precipitation',
+        'question': 'Can we establish a rainfall trend above noise?',
+    },
+    'T2M_MAX': {
+        'label': 'Daily maximum temperature at 2 metres',
+        'unit': '°C',
+        'seasonal_unit': '°C',
+        'nasa_unit': 'C',
+        'agg': 'mean',
+        'min_val': None,
+        'max_val': None,
+        'category': 'Heat extremes',
+        'question': 'Are daytime maximum temperatures climbing?',
+    },
+    'T2M_MIN': {
+        'label': 'Daily minimum temperature at 2 metres',
+        'unit': '°C',
+        'seasonal_unit': '°C',
+        'nasa_unit': 'C',
+        'agg': 'mean',
+        'min_val': None,
+        'max_val': None,
+        'category': 'Nighttime warmth',
+        'question': 'Are nighttime minimum temperatures rising faster?',
+    },
+    'RH2M': {
+        'label': 'Relative humidity at 2 metres',
+        'unit': '%',
+        'seasonal_unit': '%',
+        'nasa_unit': '%',
+        'agg': 'mean',
+        'min_val': 0.0,
+        'max_val': 100.0,
+        'category': 'Atmospheric moisture',
+        'question': 'Is near-surface relative humidity drying out?',
+    },
+    'WS2M': {
+        'label': 'Wind speed at 2 metres',
+        'unit': 'm/s',
+        'seasonal_unit': 'm/s',
+        'nasa_unit': 'm/s',
+        'agg': 'mean',
+        'min_val': 0.0,
+        'max_val': None,
+        'category': 'Surface wind',
+        'question': 'Have near-surface wind speeds shifted over time?',
+    },
+}
 
-def fetch_power(lat, lon, start=1991, end=2025):
+DISCOVERY_VARIABLES = {k: (v['label'], v['unit']) for k, v in _PARAM_SPECS.items()}
+ALL_VARIABLES = DISCOVERY_VARIABLES
+
+SEASONS = {
+    'DJF': ('Winter (DJF)', (12, 1, 2)),
+    'MAM': ('Spring (MAM)', (3, 4, 5)),
+    'JJA': ('Summer (JJA)', (6, 7, 8)),
+    'SON': ('Autumn (SON)', (9, 10, 11)),
+}
+
+
+def fetch_power(lat, lon, start=1991, end=2025, parameters='T2M,PRECTOTCORR'):
     if not (-90 <= lat <= 90 and -180 <= lon <= 180):
         raise ValueError('Coordinates are outside valid ranges.')
     if not (1981 <= start <= end < datetime.now(timezone.utc).year):
         raise ValueError('Choose completed calendar years from 1981 onward.')
+    param_str = ','.join(parameters) if isinstance(parameters, (list, tuple, set)) else str(parameters)
     params = dict(
-        parameters='T2M,PRECTOTCORR',
+        parameters=param_str,
         community='AG',
         longitude=lon,
         latitude=lat,
@@ -70,27 +150,47 @@ def fetch_power(lat, lon, start=1991, end=2025):
         'requested_longitude': lon,
         'start': start,
         'end': end,
+        'parameters': param_str,
         'data_origin': 'NASA POWER API; no synthetic measurements',
     }
     return data
 
 
+def _validate_and_aggregate_months(months_list, raw, parameter, fill):
+    spec = _PARAM_SPECS.get(parameter)
+    if spec is None:
+        raise ValueError(f'Unsupported climate parameter: {parameter}')
+    vals = np.array([raw.get(f'{myear}{month:02d}', np.nan) for myear, month in months_list], dtype=float)
+    if not np.all(np.isfinite(vals)) or np.any(vals == fill):
+        return None
+    if spec['min_val'] is not None and np.any(vals < spec['min_val']):
+        return None
+    if spec['max_val'] is not None and np.any(vals > spec['max_val']):
+        return None
+    days = np.array([calendar.monthrange(myear, month)[1] for myear, month in months_list], dtype=float)
+    value = float(np.sum(vals * days))
+    if spec['agg'] == 'mean':
+        value /= float(days.sum())
+    return value
+
+
 def annual_series(data, parameter, start, end):
-    expected = {'T2M': 'C', 'PRECTOTCORR': 'mm/day'}
-    if data['parameters'][parameter]['units'] != expected[parameter]:
+    spec = _PARAM_SPECS.get(parameter)
+    if spec is None:
+        raise ValueError(f'Unsupported parameter: {parameter}')
+    if parameter not in data.get('parameters', {}) or parameter not in data.get('properties', {}).get('parameter', {}):
+        raise ValueError(f'Parameter {parameter} is missing from this NASA POWER dataset.')
+    if data['parameters'][parameter]['units'] != spec['nasa_unit']:
         raise ValueError('Unexpected source units. Analysis stopped to prevent invalid conversion.')
     fill = data['header']['fill_value']
     raw = data['properties']['parameter'][parameter]
     rows, omitted = [], []
     for year in range(start, end + 1):
-        vals = np.array([raw.get(f'{year}{month:02d}', np.nan) for month in range(1, 13)], dtype=float)
-        if not np.all(np.isfinite(vals)) or np.any(vals == fill) or (parameter == 'PRECTOTCORR' and np.any(vals < 0)):
+        months = [(year, month) for month in range(1, 13)]
+        value = _validate_and_aggregate_months(months, raw, parameter, fill)
+        if value is None:
             omitted.append(year)
             continue
-        days = np.array([calendar.monthrange(year, month)[1] for month in range(1, 13)])
-        value = np.sum(vals * days)
-        if parameter == 'T2M':
-            value /= days.sum()
         rows.append({'year': year, 'value': float(value)})
     return pd.DataFrame(rows, columns=['year', 'value']), omitted
 
@@ -275,7 +375,7 @@ def evaluate_site(location, data, parameter, start, end, interval_mode='cautious
 
 def compare_locations(loc_a, data_a, loc_b, data_b, parameter='T2M', start=1991, end=2025, interval_mode='cautious'):
     """Compare two locations and derive the headline, plain-English verdict, and methodological notes from the data."""
-    var_name, unit = VARIABLES[parameter]
+    var_name, unit = ALL_VARIABLES[parameter]
     rate_unit = f"{unit}/decade"
     site_a = evaluate_site(loc_a, data_a, parameter, start, end, interval_mode=interval_mode)
     site_b = evaluate_site(loc_b, data_b, parameter, start, end, interval_mode=interval_mode)
@@ -499,7 +599,7 @@ def paired_difference_series(frame_a, frame_b, start=None, end=None):
 
 def climate_trial(loc_a, data_a, loc_b, data_b, parameter='T2M', start=1991, end=2025, interval_mode='cautious'):
     """Run an exploratory Climate Trial testing whether the paired annual difference D(year) = B(year) - A(year) has a nonzero slope."""
-    var_name, unit = VARIABLES[parameter]
+    var_name, unit = ALL_VARIABLES[parameter]
     rate_unit = f"{unit}/decade"
     site_a = evaluate_site(loc_a, data_a, parameter, start, end, interval_mode=interval_mode)
     site_b = evaluate_site(loc_b, data_b, parameter, start, end, interval_mode=interval_mode)
@@ -805,17 +905,143 @@ def extract_grid_metadata(location, data, requested_lat=None, requested_lon=None
 def source_sha256(location, data, data_dir=None):
     """Compute SHA-256 checksum matching the exact analyzed payload (bundled snapshot file or live NASA JSON)."""
     snap_root = Path(data_dir) if data_dir is not None else (Path(__file__).parent / 'data')
-    snap_path = snap_root / f'{location.lower()}.json'
-    if location in LOCATIONS and snap_path.exists():
-        raw_bytes = snap_path.read_bytes()
-        try:
-            snap_obj = json.loads(raw_bytes)
-        except Exception:
-            snap_obj = None
-        if snap_obj == data:
-            digest = hashlib.sha256(raw_bytes).hexdigest()
-            return {'sha256': digest, 'scope': f'Unaltered bundled snapshot ({snap_path.name})'}
+    candidates = [
+        snap_root / f'{location.lower()}.json',
+        snap_root / 'discovery' / f'{location.lower()}_extended.json',
+    ]
+    if location in LOCATIONS:
+        for snap_path in candidates:
+            if not snap_path.exists():
+                continue
+            raw_bytes = snap_path.read_bytes()
+            try:
+                snap_obj = json.loads(raw_bytes)
+            except Exception:
+                snap_obj = None
+            if snap_obj == data:
+                digest = hashlib.sha256(raw_bytes).hexdigest()
+                return {'sha256': digest, 'scope': f'Unaltered bundled snapshot ({snap_path.name})'}
     payload = {k: v for k, v in data.items() if k != '_earthpulse'} if isinstance(data, dict) else data
     canonical = json.dumps(payload, sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode('utf-8')
     digest = hashlib.sha256(canonical).hexdigest()
     return {'sha256': digest, 'scope': 'Live NASA API payload (canonical JSON)'}
+
+
+def load_city_dataset(location, parameter='T2M', data_dir=None):
+    """Load the unaltered bundled NASA POWER JSON snapshot covering the requested parameter for a preset city."""
+    if location not in LOCATIONS:
+        raise ValueError(f'Unknown preset city: {location}')
+    root = Path(data_dir) if data_dir is not None else (Path(__file__).parent / 'data')
+    if parameter in ('T2M', 'PRECTOTCORR'):
+        path = root / f'{location.lower()}.json'
+    elif parameter in _PARAM_SPECS:
+        path = root / 'discovery' / f'{location.lower()}_extended.json'
+    else:
+        raise ValueError(f'Unsupported parameter: {parameter}')
+    return json.loads(path.read_text(encoding='utf-8'))
+
+
+def seasonal_series(data, parameter, season, start=1991, end=2025):
+    """Aggregate monthly NASA POWER values into meteorological seasons (DJF cross-year: Dec(Y-1)+Jan(Y)+Feb(Y))."""
+    if season not in SEASONS:
+        raise ValueError(f'Unknown season code: {season}. Expected one of {list(SEASONS)}.')
+    spec = _PARAM_SPECS.get(parameter)
+    if spec is None:
+        raise ValueError(f'Unsupported parameter: {parameter}')
+    if parameter not in data.get('parameters', {}) or parameter not in data.get('properties', {}).get('parameter', {}):
+        raise ValueError(f'Parameter {parameter} is missing from this NASA POWER dataset.')
+    if data['parameters'][parameter]['units'] != spec['nasa_unit']:
+        raise ValueError('Unexpected source units. Analysis stopped to prevent invalid conversion.')
+
+    fill = data['header']['fill_value']
+    raw = data['properties']['parameter'][parameter]
+    _, months = SEASONS[season]
+    rows, omitted = [], []
+    for year in range(start, end + 1):
+        if season == 'DJF':
+            month_pairs = [(year - 1, 12), (year, 1), (year, 2)]
+        else:
+            month_pairs = [(year, m) for m in months]
+        value = _validate_and_aggregate_months(month_pairs, raw, parameter, fill)
+        if value is None:
+            omitted.append(year)
+            continue
+        rows.append({'year': year, 'value': float(value)})
+    return pd.DataFrame(rows, columns=['year', 'value']), omitted
+
+
+def seasonal_fingerprints(location, data, parameter='T2M', start=1991, end=2025, interval_mode='cautious'):
+    """Compute exploratory OLS and HAC/cautious seasonal trend profiles across DJF, MAM, JJA, and SON."""
+    spec = _PARAM_SPECS.get(parameter)
+    if spec is None:
+        raise ValueError(f'Unsupported parameter: {parameter}')
+    season_unit = spec['seasonal_unit']
+    rate_unit = f'{season_unit}/decade'
+    seasons_out = {}
+    for code, (label, months) in SEASONS.items():
+        frame, omitted = seasonal_series(data, parameter, code, start, end)
+        base = {
+            'season': code,
+            'label': label,
+            'months': months,
+            'frame': frame,
+            'omitted': omitted,
+            'unit': season_unit,
+            'rate_unit': rate_unit,
+            'cross_year': (code == 'DJF'),
+        }
+        try:
+            res = trend(frame)
+            ci, p_val, active_se, mode_label = _select_interval_bundle(res, interval_mode)
+            ex0 = excludes_zero(ci)
+            base.update(res)
+            base.update({
+                'eligible': True,
+                'active_ci': ci,
+                'active_p': p_val,
+                'active_se_decade': active_se,
+                'mode_label': mode_label,
+                'excludes_zero': ex0,
+                'uncertainty_lens': uncertainty_lens_summary(res),
+                'direction': (
+                    'positive' if (ex0 and res['slope_decade'] > 0)
+                    else ('negative' if (ex0 and res['slope_decade'] < 0) else 'inconclusive')
+                ),
+                'status_label': (
+                    'Evidence of upward seasonal trend' if (ex0 and res['slope_decade'] > 0)
+                    else ('Evidence of downward seasonal trend' if (ex0 and res['slope_decade'] < 0)
+                          else 'Inconclusive seasonal trend (interval crosses 0)')
+                ),
+            })
+        except ValueError as exc:
+            base.update({
+                'eligible': False,
+                'reason': str(exc),
+                'excludes_zero': None,
+                'direction': 'withheld',
+                'status_label': 'Withheld (< 30 consecutive complete seasons)',
+            })
+        seasons_out[code] = base
+
+    annual_site = evaluate_site(location, data, parameter, start, end, interval_mode=interval_mode)
+    return {
+        'location': location,
+        'parameter': parameter,
+        'var_name': spec['label'],
+        'seasonal_unit': season_unit,
+        'rate_unit': rate_unit,
+        'start': start,
+        'end': end,
+        'interval_mode': interval_mode,
+        'annual': annual_site,
+        'seasons': seasons_out,
+        'djf_boundary_note': (
+            'Winter (DJF) pairs December of year Y−1 with January and February of year Y; '
+            'any boundary year lacking December Y−1 or any incomplete 3-month winter is omitted rather than padded.'
+        ),
+        'multiplicity_caveat': (
+            'Exploratory multi-season comparison (4 seasonal regressions tested alongside the annual series). '
+            'Evaluating 4 seasons increases multiple-comparison exposure; interpret seasonal differences as physical '
+            'context rather than standalone confirmatory proof.'
+        ),
+    }
