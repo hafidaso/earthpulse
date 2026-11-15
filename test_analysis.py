@@ -518,26 +518,38 @@ def test_unified_versionless_hygiene_and_arabic_ui():
     root = Path(__file__).parent
     version_pat = re.compile(r'\b[vV][23]\b(?!\.\d)|EarthPulse\s*[Vv][23]')
 
-    # app.py: valid Python 3.11 syntax, Arabic RTL UI present, zero V2/V3 branding
-    app_src = (root / 'app.py').read_text(encoding='utf-8')
-    ast.parse(app_src)
-    assert 'محاكمة المناخ' in app_src
-    assert 'عدسة عدم اليقين' in app_src
-    assert 'تحميل موجز الأدلة العلمي (PDF)' in app_src
-    assert not version_pat.findall(app_src), f'Legacy version labels in app.py: {version_pat.findall(app_src)}'
+    # app.py, lab.py, expert_en.py, expert_ar.py: valid Python syntax and zero V2/V3 branding
+    for fname in ('app.py', 'lab.py', 'expert_en.py', 'expert_ar.py'):
+        src = (root / fname).read_text(encoding='utf-8')
+        ast.parse(src)
+        assert not version_pat.findall(src), f'Legacy version labels in {fname}: {version_pat.findall(src)}'
+
+    lab_src = (root / 'lab.py').read_text(encoding='utf-8')
+    assert 'The climate tells a story. Can you prove it?' in lab_src
+    assert 'CASE 001' in lab_src and 'CASE 002' in lab_src and 'CASE 003' in lab_src
+
+    ar_src = (root / 'expert_ar.py').read_text(encoding='utf-8')
+    assert 'محاكمة المناخ' in ar_src
+    assert 'عدسة عدم اليقين' in ar_src
+    assert 'تحميل موجز الأدلة العلمي (PDF)' in ar_src
 
     # brief_pdf.py: zero V2/V3 labels (NASA POWER API v2.10.0 excluded via negative lookahead)
     pdf_src = (root / 'brief_pdf.py').read_text(encoding='utf-8')
     assert not version_pat.findall(pdf_src), f'Unexpected version labels in brief_pdf.py: {version_pat.findall(pdf_src)}'
 
-    # README.md: technical Arabic documentation, zero V2/V3 labels
+    # README.md, REFERENCES.md, AI_DISCLOSURE.md: English default + optional Arabic note + NASA resources + AI disclosure
     readme_src = (root / 'README.md').read_text(encoding='utf-8')
+    assert 'The climate tells a story. Can you prove it?' in readme_src
     assert 'نبض الأرض' in readme_src
+    assert 'AI Usage Disclosure' in readme_src
     assert not version_pat.findall(readme_src), f'Legacy version labels in README.md: {version_pat.findall(readme_src)}'
 
-    # EarthPulse-Demo.pdf: clean English 9-slide deck, zero V2/V3 branding
+    refs_src = (root / 'REFERENCES.md').read_text(encoding='utf-8')
+    assert 'NASA POWER' in refs_src and 'MERRA-2' in refs_src and 'AI Usage Disclosure' in refs_src
+
+    # EarthPulse-Demo.pdf: strict 7-slide limit (official NASA Space Apps cap), zero V2/V3 branding
     doc = fitz.open(root / 'EarthPulse-Demo.pdf')
-    assert len(doc) == 9
+    assert len(doc) == 7 and len(doc) <= 7
     deck_text = '\n'.join(page.get_text() for page in doc)
     assert not version_pat.findall(deck_text), f'Legacy version labels in EarthPulse-Demo.pdf: {version_pat.findall(deck_text)}'
 

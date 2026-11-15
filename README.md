@@ -1,129 +1,127 @@
-# نبض الأرض · محاكمة المناخ (`EarthPulse`)
+# EarthPulse — The Climate Evidence Lab & Climate Trial
 
-**ضع الادعاءات المناخية أمام الدليل الإحصائي** — تطبيق ويب علمي تفاعلي بواجهة عربية تقنية متكاملة (`RTL`) مخصّص لتحدي تطبيقات ناسا الفضائية 2026 (**NASA Space Apps Challenge 2026**).
+**The climate tells a story. Can you prove it?**  
+*Investigate NASA climate data. Challenge statistical claims. Discover what the evidence really supports.*
 
-يجمع المشروع بين تحليل السلاسل الزمنية المناخية المستمدة من بيانات **NASA POWER / MERRA-2** واختبار الفروق المقترنة بين المواقع، مع إبراز دقة الخلايا الشبكية، ومقارنة أخطاء التقدير المعيارية بين الانحدار الخطي الاعتيادي (**OLS**) ومقدّر **Newey–West HAC** المقاوم للارتباط الذاتي، وتوليد موجز أدلة علمي موثّق بصيغة PDF قابل للتحميل.
+- **Live Public Deployment (Streamlit Cloud)**: [https://earthpulse-labs-hafidaso.streamlit.app/](https://earthpulse-labs-hafidaso.streamlit.app/)
+- **7-Slide Judge Presentation Deck (PDF)**: [`EarthPulse-Demo.pdf`](EarthPulse-Demo.pdf)
+- **Official Challenge**: [NASA Space Apps 2026 — "Be An Earth System Trend Detective!"](https://www.spaceappschallenge.org/2026/challenges/earth-system-trend-detective/)
+- **Languages**: **English (Default Judge Experience)** + **Optional Full Arabic RTL Interface (`العربية` — نبض الأرض)** in the top navigation bar.
 
-> **التطبيق المباشر:** [earthpulse-labs-hafidaso.streamlit.app](https://earthpulse-labs-hafidaso.streamlit.app/)  
-> **العرض التقديمي (بالإنجليزية):** [`EarthPulse-Demo.pdf`](EarthPulse-Demo.pdf)
-
-![الواجهة الافتتاحية لمحاكمة المناخ — هل ترتفع حرارة مراكش أسرع من الدار البيضاء؟](screenshots/earthpulse_pretrial.png)
-
----
-
-## الفكرة العلمية الأساسية
-
-تنتج كل معادلة انحدار خطي ميلاً رقمياً، غير أن الميل الظاهري قد يخدع صانع القرار لسببين إحصائيين جوهريين:
-
-1. **تجاهل الذاكرة الزمنية للمناخ (`OLS` مقابل `Newey–West HAC`):** يفترض الانحدار الاعتيادي استقلالية كل سنة عن سابقتها، لكن الشذوذات الحرارية تميل للتجمّع عبر الزمن ($\rho_1 > 0$). في مدينة مثل الدار البيضاء (`1991–2025`)، ينتقل مجال الثقة `95%` من `[+0.057, +0.381]` (OLS، يبدو حاسماً) إلى `[-0.026, +0.465]` (Newey–West HAC، يعبر الصفر المرجعي ويصبح غير حاسم).
-2. **فخّ تداخل المجالات المنفردة عند مقارنة مدينتين:** يتداخل مجال الثقة الوقائي للدار البيضاء `[-0.026, +0.465]` مع مجال مراكش `[+0.230, +0.734]` رغم أن مراكش تسجّل ميلاً مضاعفاً تقريباً. التداخل المنفرد **لا يختبر أبداً** هل يختلف الميلان إحصائياً. الحل الصحيح هو تكوين سلسلة الفروق المقترنة سنةً بسنة:
-
-$$D(\text{year}) = \text{Variable}_B(\text{year}) - \text{Variable}_A(\text{year})$$
-
-يُلغي الاقتران السنوي التشويش الإقليمي المشترك بين السلسلتين ($r = +0.83$ بين الدار البيضاء ومراكش)، ما يخفض الارتباط الذاتي لبواقي سلسلة الفرق إلى $\rho_1 = +0.03$ ويكشف فارق تسارع حقيقي يبلغ **`+0.26306 °C/عقد`** ($p = 8.12 \times 10^{-5}$ الاستكشافية، بمجال وقائي `95%`: `[+0.144, +0.382]`).
+![EarthPulse — The Climate Evidence Lab (Default Judge Screen)](screenshots/earthpulse_lab_home.png)
 
 ---
 
-## تدفق العمل التفاعلي من ثلاث خطوات
+## 1. Why EarthPulse Exists
 
-يعمل التطبيق افتراضياً في وضع **محاكمة المناخ (مقارنة موقعين)** مع إمكانية التبديل في أي لحظة إلى وضع **فحص موقع منفرد أو إحداثيات عالمية مخصصة**:
+Every ordinary least-squares (OLS) regression line drawn through a climate record produces a numerical slope. However, **two common statistical errors** frequently distort climate trend claims:
 
-| الخطوة | السؤال الإرشادي | المكوّن العلمي |
-| :--- | :--- | :--- |
-| **الخطوة 1** | **أين يقع الدليل المكاني؟** | **خريطة الواقع الشبكي:** عرض السياق الساحلي الأطلسي وحاجز الأطلس التخطيطي مع مربعات المقياس التقريبي لخلايا `MERRA-2` (`~0.5° × ~0.625°`؛ نحو `~56 كم × ~59 كم` فوق المغرب) ومقارنة الإحداثيات النقطية بارتفاعات الشبكة. |
-| **الخطوة 2** | **ما مدى قوة الدليل الإحصائي؟** | **محاكمة الفرق المقترن وعدسة عدم اليقين:** تحول متحرك بين المسارين المنفردين وسلسلة $D(\text{year})$، لوحة حساسية الفترة (30 سنة مكتملة فأكثر)، برهان متطابقة OLS الجبري (`|Δ| < 1e-12`)، وعدسة المقارنة بين `SE_OLS` و`SE_HAC` الخام والحد الوقائي `max(SE_OLS, SE_HAC)`. |
-| **الخطوة 3** | **هل يمكنني التحقق من الدليل؟** | **بطاقة الأدلة بنقرة واحدة:** زر **`تحميل موجز الأدلة العلمي (PDF)`** يولّد ملف A4 من صفحة واحدة باللغة الإنجليزية القياسية يضم السؤال، الإحداثيات، النتائج المحسوبة لحظياً، التحفظات المنهجية، روابط NASA POWER الدقيقة، وبصمات `SHA-256`. |
+1. **Ignoring temporal autocorrelation (`lag-1 r`)**: Treating consecutive years as statistically independent when warm or wet anomalies persist across years narrows confidence intervals artificially and can create false certainty.
+2. **Misreading separate confidence intervals**: Inferring that two cities warm at the same rate merely because their individual 95% confidence intervals overlap—or claiming "no climate change" when an interval crosses zero (**an inconclusive interval crossing zero is not proof of zero change or equal trends**).
 
-![مخطط الفروق المقترنة واختبار صلابة الحُكم](screenshots/earthpulse_climate_trial.png)
+**EarthPulse** turns passive trend viewing into an interactive, reproducible scientific investigation backed by unaltered **NASA POWER / MERRA-2** records (`1991–2025`, `n = 35` complete years) across four distinct Moroccan climate regimes: **Casablanca**, **Rabat**, **Marrakech**, and **Ouarzazate**.
 
 ---
 
-## لقطات موثقة من النظام
+## 2. Three Modes in One Unified Application
 
-| خريطة الواقع الشبكي (الخطوة 1) | عدسة عدم اليقين OLS مقابل HAC الخام (الخطوة 2) |
-| :---: | :---: |
-| ![خريطة الواقع الشبكي MERRA-2](screenshots/earthpulse_grid_reality_map.png) | ![عدسة عدم اليقين](screenshots/earthpulse_uncertainty_lens.png) |
-| **بطاقة الأدلة PDF وبصمات SHA-256 (الخطوة 3)** | **حُكم غير حاسم — الهطول المطري (مراكش − الدار البيضاء)** |
-| ![بطاقة الأدلة](screenshots/earthpulse_evidence_passport.png) | ![محاكمة غير حاسمة للهطول المطري](screenshots/earthpulse_inconclusive.png) |
-| **وضع الموقع المنفرد والقائمة الجانبية** | **توافق العرض على شاشات الهواتف (390×844)** |
-| ![فحص موقع منفرد](screenshots/earthpulse_single_location.png) | ![عرض الجوال](screenshots/earthpulse_mobile.png) |
+Use the top navigation bar to switch seamlessly between:
 
----
+1. **🧭 Climate Evidence Lab (Default First-Visit Experience — `lab.py`)**:
+   - Designed for NASA judges and first-time visitors to investigate three guided cases in under 60 seconds:
+     - **CASE 001 — THE TWO CITIES**: *"Is Marrakech warming faster than Casablanca?"*
+       - Tests the paired annual difference series `D(year) = Variable_B(year) − Variable_A(year)` (`1991–2025`). Canceling shared interannual variance (`pair r = +0.83`) reveals a statistically significant warming difference of **`+0.26306 °C/decade`** (cautious 95% CI **`[+0.144, +0.382]`**, `p = 8.12e-05`), even though the two cities' individual cautious intervals overlap (`[-0.03, +0.46]` vs. `[+0.23, +0.73]`).
+     - **CASE 002 — THE FALSE CERTAINTY**: *"Can ignoring time dependence change a climate verdict?"*
+       - Compares conventional OLS (`[+0.06, +0.38] °C/decade`, `p = 0.0096`, excludes zero) against Newey–West HAC (`[-0.03, +0.46] °C/decade`, `p = 0.0786`, crosses zero) in Casablanca, where coastal thermal persistence (`lag-1 r = +0.35`) widens the standard error by **`1.52×`**.
+     - **CASE 003 — THE RAINFALL QUESTION**: *"Can we establish a rainfall trend in these cities?"*
+       - Examines corrected annual precipitation (`PRECTOTCORR`) across all four Moroccan grid cells (`1991–2025`). Every 95% interval crosses zero (e.g., Casablanca `+28.3 mm/yr/decade`, CI `[-33.4, +90.1]`; Marrakech `-0.4 mm/yr/decade`, CI `[-34.1, +33.3]`), illustrating why **an inconclusive result due to high interannual rainfall volatility is not proof of no change**.
+   - Each case includes an optional **prediction check**, an **interactive visual reveal**, a **plain-English explanation**, a **one-click 1-page Scientific Evidence Brief (PDF)** with SHA-256 data checksums, and a direct link to the full Expert Analysis view.
 
-## النتائج الإحصائية الموثّقة (`1991–2025` · 35 سنة مكتملة)
+| CASE 001 — The Two Cities | CASE 002 — The False Certainty | CASE 003 — The Rainfall Question |
+| :---: | :---: | :---: |
+| ![Case 001](screenshots/earthpulse_lab_case001.png) | ![Case 002](screenshots/earthpulse_lab_case002.png) | ![Case 003](screenshots/earthpulse_lab_case003.png) |
 
-جميع الأرقام مستخرجة مباشرةً من لقطات **NASA POWER / MERRA-2 Monthly and Annual (API v2.10.0)** المضمّنة في `data/` دون أي تعديل على القياسات الخام:
+2. **🔬 Expert Analysis (Full English Scientific Workbench — `expert_en.py`)**:
+   - **The Climate Trial**: Compare any two locations (`Casablanca`, `Rabat`, `Marrakech`, `Ouarzazate`, or custom global coordinates fetched live from the NASA POWER API), adjust the analysis window (enforcing the WMO 30-consecutive-complete-years rule), inspect paired difference series `D(year)`, and verify the algebraic identity `OLS(B − A) = OLS(B) − OLS(A)`.
+   - **Compare: The Trend Verdict** & **Single Location Diagnostics**: Zero-line dot-and-whisker plots, lag-1 residual persistence scatter (`e(t−1)` vs. `e(t)`), and rolling 30-to-35-year window sensitivity analysis.
+   - **Three-Step Scientific Evidence Architecture**:
+     - **STEP 1 — Where is the Evidence? (The Grid-Cell Reality Map)**: Interactive Plotly terrain and grid map showing the selected city coordinates alongside an explicitly labeled approximate `0.5° latitude × 0.625° longitude` (`~55 km × 59 km`) NASA MERRA-2 grid-cell scale footprint, Atlantic coastline, and schematic Atlas Mountains context.
+     - **STEP 2 — How Strong is the Evidence? (The Uncertainty Lens)**: Compares `SE_OLS`, raw `SE_HAC`, and cautious `max(SE_OLS, SE_HAC)`. Explicitly documents that **`SE_HAC / SE_OLS` measures the relative change in standard error—it is NOT a Type-I error probability or false-positive rate**.
+     - **STEP 3 — Can I Verify the Evidence? (One-Click Evidence Passport PDF)**: Generates a downloadable 1-page A4 PDF containing exact coordinates, analysis period, slopes, confidence intervals, methodology, limitations, NASA POWER request URLs, and **SHA-256 input checksums**.
 
-### أ) المقارنات المقترنة `D(year) = ب − أ`
-
-| المقارنة | المتغير | فرق الميل / عقد | مجال 95% الوقائي `max(SE_OLS, SE_HAC)` | مجال HAC الخام `95%` | نسبة `SE_HAC / SE_OLS` | قيمة `p` (الوقائي) | الحُكم الاستكشافي |
-| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
-| **مراكش − الدار البيضاء** | الحرارة `T2M` | `+0.26306 °C` | `[+0.144, +0.382]` | `[+0.167, +0.359]` | `0.81x` | `8.12e-05` | **فرق اتجاهي موجب** (`r = +0.83`، `ρ₁ = +0.03`) |
-| **الرباط − الدار البيضاء** | الحرارة `T2M` | `+0.02098 °C` | `[-0.011, +0.053]` | `[-0.011, +0.053]` | `1.17x` | `0.197` | **نتيجة غير حاسمة** *(لا يعني تساوي الميلين)* |
-| **مراكش − الدار البيضاء** | الهطول `PRECTOTCORR` | `-28.75 mm/yr` | `[-72.24, +14.75]` | `[-65.87, +8.37]` | `0.85x` | `0.188` | **نتيجة غير حاسمة** *(يعبر الصفر المرجعي)* |
-
-### ب) الاتجاهات المنفردة والذاكرة الزمنية عبر المدن المغربية الأربع (`T2M`، `1991–2025`)
-
-| المدينة (شبكة MERRA-2) | الميل / عقد | مجال `OLS 95%` | مجال `HAC 95%` | نسبة `SE_HAC / SE_OLS` | ارتباط البواقي `ρ₁` | ارتفاع الشبكة (م) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **الدار البيضاء** | `+0.219 °C` | `[+0.057, +0.381]` | `[-0.026, +0.465]` | `1.52x` | `+0.35` | `152.91` |
-| **الرباط** | `+0.240 °C` | `[+0.082, +0.398]` | `[+0.000, +0.480]` | `1.52x` | `+0.37` | `100.66` |
-| **مراكش** | `+0.482 °C` | `[+0.272, +0.693]` | `[+0.230, +0.734]` | `1.20x` | `+0.13` | `836.94` |
-| **ورزازات** | `+0.495 °C` | `[+0.301, +0.690]` | `[+0.260, +0.731]` | `1.21x` | `+0.22` | `1556.79` |
+3. **🌐 العربية (Optional Full Arabic RTL Interface — `expert_ar.py`)**:
+   - Preserves the complete right-to-left (RTL) technical Arabic experience (**نبض الأرض — محاكمة المناخ**) for Arabic-speaking researchers, students, and decision-makers in Morocco and the MENA region.
 
 ---
 
-## القواعد والقيود العلمية المعتمدة
+## 3. Verified Scientific Results (`1991–2025`, `n = 35` Complete Years)
 
-- **استكشافي لا توكيدي:** لا يطبّق التحليل أي تصحيح لتعدد المقارنات عند تبديل المدن أو المتغيرات أو النوافذ الزمنية.
-- **شرط الـ 30 سنة متصلة مكتملة:** يتم تجميع السنوات من الشهور الـ 12 بأوزان الأيام الفعلية (مع احترام السنوات الكبيسة)، ويُستبعد أي عام ينقصه شهر واحد فوراً دون تعويض اصطناعي؛ كما يُعلَّق الاستدلال كلياً عند توفر أقل من 30 سنة متصلة.
-- **دلالة نسبة `SE_HAC / SE_OLS`:** تقيس هذه النسبة **التغير النسبي في الخطأ المعياري المقدّر** نتيجة الارتباط الذاتي، و**ليست** احتمال خطأ من النوع الأول (`Type-I error`) ولا معدل إيجابيات كاذبة.
-- **تفسير عدم الحسم:** عبور مجال الثقة للصفر يعني أن البيانات لا تحسم وجود فارق في الميل وفق الافتراض المختار؛ ولا يجوز تفسيره أبداً على أنه «برهان على تساوي الاتجاهين».
-- **حدود التمثيل المكاني لشبكة `MERRA-2`:** تقترب الدقة الأفقية لـ NASA MERRA-2 من `0.5° × 0.625°`. ولأن استعلام النقطة في NASA POWER لا يُدرج زوايا مضلع الخلية داخل JSON، تُرسم المربعات المتقطعة بوصفها **نطاق مقياس تقريبياً متمركزاً حول الإحداثية المعادة**، دون أي تصحيح ارتفاعي محلي أو معايرة بمحطات الرصد الأرضية.
-- **لغة الوثائق القابلة للتنزيل:** واجهة التطبيق وهذا الملف باللغة العربية التقنية، بينما يُصدَر **موجز الأدلة PDF** (صفحة واحدة A4، مثال مصوَّر أدناه) والعرض التقديمي [`EarthPulse-Demo.pdf`](EarthPulse-Demo.pdf) باللغة الإنجليزية للتوثيق والتحكيم العلمي الدولي.
+### A. Single-Grid-Cell Baseline Trends (Verified against `data/results.json`)
 
-<details>
-<summary>معاينة صفحة موجز الأدلة العلمي المصدَّر بصيغة PDF (بالإنجليزية)</summary>
+| Location | Variable | Annual Mean | OLS Slope / Decade | Conventional 95% CI (OLS) | Cautious 95% CI (`max(OLS, HAC)`) | Residual `lag-1 r` | `SE_HAC / SE_OLS` | Cautious Verdict |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Casablanca** | `T2M` (°C) | `18.70` | `+0.21918` | `[+0.05713, +0.38123]` | `[-0.02648, +0.46484]` | `+0.35` | `1.52×` | **Crosses 0 (Inconclusive)** |
+| **Rabat** | `T2M` (°C) | `18.91` | `+0.24016` | `[+0.08196, +0.39837]` | `[+0.00019, +0.48014]` | `+0.37` | `1.52×` | **Excludes 0 (Borderline)** |
+| **Marrakech** | `T2M` (°C) | `18.85` | `+0.48224` | `[+0.27184, +0.69265]` | `[+0.23036, +0.73413]` | `+0.13` | `1.20×` | **Excludes 0 (Warming)** |
+| **Ouarzazate** | `T2M` (°C) | `16.44` | `+0.49548` | `[+0.30071, +0.69024]` | `[+0.25972, +0.73123]` | `+0.22` | `1.21×` | **Excludes 0 (Warming)** |
+| **Casablanca** | `PRECTOTCORR` (mm/yr) | `447.9` | `+28.342` | `[-33.377, +90.062]` | `[-33.377, +90.062]` | `+0.00` | `0.81×` | **Crosses 0 (Inconclusive)** |
+| **Rabat** | `PRECTOTCORR` (mm/yr) | `445.7` | `+25.145` | `[-35.040, +85.331]` | `[-35.040, +85.331]` | `+0.01` | `0.81×` | **Crosses 0 (Inconclusive)** |
+| **Marrakech** | `PRECTOTCORR` (mm/yr) | `286.4` | `-0.405` | `[-34.095, +33.286]` | `[-34.095, +33.286]` | `-0.15` | `0.78×` | **Crosses 0 (Inconclusive)** |
+| **Ouarzazate** | `PRECTOTCORR` (mm/yr) | `211.4` | `-3.269` | `[-25.115, +18.577]` | `[-25.115, +18.577]` | `-0.15` | `0.75×` | **Crosses 0 (Inconclusive)** |
 
-![نموذج موجز الأدلة العلمي PDF](screenshots/earthpulse_evidence_brief_sample.png)
+### B. Paired Climate Trial Results (`D(year) = Variable_B(year) − Variable_A(year)`)
 
-</details>
+| Comparison (`B − A`) | Variable | Paired Slope Diff / Decade | OLS 95% CI | Cautious 95% CI (`max(OLS, HAC)`) | Cautious `p`-value | Inter-Site `r` | Paired `ρ₁` | Trial Verdict |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Marrakech − Casablanca** | `T2M` (°C) | **`+0.26306`** | `[+0.14408, +0.38205]` | **`[+0.14408, +0.38205]`** | `8.12e-05` | `+0.83` | `+0.03` | **Positive Trend Difference** |
+| **Rabat − Casablanca** | `T2M` (°C) | `+0.02098` | `[-0.00856, +0.05053]` | `[-0.01148, +0.05344]` | `0.1976` | `+0.98` | `+0.21` | **Inconclusive (Not Equal)** |
+| **Marrakech − Casablanca** | `PRECTOTCORR` (mm/yr) | `-28.747` | `[-72.226, +14.732]` | `[-72.226, +14.732]` | `0.1876` | `+0.69` | `+0.04` | **Inconclusive (Not Equal)** |
 
 ---
 
-## التشغيل المحلي والاختبارات
+## 4. Official NASA Resources, References & AI Usage Disclosure
 
-يتطلب **Python 3.11+**:
+### NASA Resources Used (Meeting Challenge Requirements)
+1. **[NASA POWER Monthly and Annual API (`v2.10.0`)](https://power.larc.nasa.gov/docs/services/api/temporal/monthly/)**: Primary data source (`AG` community, monthly `T2M` and `PRECTOTCORR`). Bundled unaltered in `data/*.json` with embedded request URLs and SHA-256 integrity hashes, plus live API querying for any global coordinate.
+2. **[NASA GMAO MERRA-2 Reanalysis](https://gmao.gsfc.nasa.gov/reanalysis/MERRA-2/)**: Underlying meteorological reanalysis (`0.5° latitude × 0.625° longitude` horizontal grid spacing) powering the NASA POWER parameters.
+3. **[NASA Giovanni](https://giovanni.gsfc.nasa.gov/giovanni/)**: Official challenge gridded-data visualization and exploration reference for MERRA-2 Earth system variables.
+
+### Methodological & Software References
+- **Newey, W. K., & West, K. D. (1987)**: *A Simple, Positive Semi-Definite, Heteroskedasticity and Autocorrelation Consistent Covariance Matrix*, Econometrica, 55(3), 703–708. [https://doi.org/10.2307/1913610](https://doi.org/10.2307/1913610)
+- **Open-Source Stack**: Python 3.11+, Streamlit, Plotly, pandas, NumPy, SciPy, `statsmodels`, Requests, `pytest`, ReportLab, PyMuPDF (`fitz`). See [`REFERENCES.md`](REFERENCES.md).
+
+### AI Usage Disclosure
+In accordance with NASA Space Apps Challenge rules (see [`AI_DISCLOSURE.md`](AI_DISCLOSURE.md) and [`REFERENCES.md`](REFERENCES.md)):
+- Generative AI coding tools were used to assist with software engineering, Streamlit UI layout, bilingual English/Arabic localization, PDF brief formatting, and automated test scaffolding.
+- **Zero climate measurements, coordinates, or statistical outputs were generated or modified by AI.** All bundled JSON snapshots come unaltered from the NASA POWER API (`MERRA-2`), and every statistical figure is computed deterministically by `analysis.py` and verified by 20 automated `pytest` tests.
+
+---
+
+## 5. Scientific Limitations & Interpretation Guardrails
+
+- **Grid-Cell Scale vs. Local Stations**: NASA POWER values represent `0.5° × 0.625°` (`~55 km × 59 km`) MERRA-2 reanalysis grid-cell averages (`152.93 m` mean elevation for Casablanca; `836.93 m` for Marrakech) without sub-grid DEM downscaling or local microclimate adjustments.
+- **Inconclusive ≠ No Change**: A 95% confidence interval crossing zero indicates that linear trend direction cannot be separated from interannual variability over the selected window—it never proves that the true trend is zero or that two cities have identical trends.
+- **Standard Error Ratio (`SE_HAC / SE_OLS`)**: Measures the relative change in standard error when accounting for serial correlation; it is **not** a Type-I error rate or false-positive probability.
+- **Exploratory Scope**: All p-values and confidence intervals are exploratory two-sided `t` screens (`df = n − 2`) without family-wise multiplicity adjustment across cities or rolling windows, and statistical trends do not establish physical attribution.
+
+---
+
+## 6. Local Installation, Testing & Execution
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# تشغيل حزمة الاختبارات العلمية والتكاملية الكاملة
-python -m pytest -v
-
-# تشغيل التطبيق التفاعلي محلياً (يعمل افتراضياً على لقطات NASA الموثقة مع خيار الاستعلام الحي)
-streamlit run app.py
+python3 -m pip install -r requirements.txt
+python3 -m pytest -v
+python3 -m streamlit run app.py
 ```
 
----
-
-## بنية المستودع والملفات
-
-| المسار | الدور |
-| :--- | :--- |
-| [`app.py`](app.py) | واجهة Streamlit العربية (`RTL`)، محاكمة المناخ التفاعلية، خريطة الواقع الشبكي، عدسة عدم اليقين، واستدعاء التصدير |
-| [`analysis.py`](analysis.py) | محرك التحليل الإحصائي: تجميع NASA POWER الشهري بأوزان الأيام، Newey–West HAC، السلسلة المقترنة $D(\text{year})$، بيانات الشبكة، وبصمات `SHA-256` |
-| [`brief_pdf.py`](brief_pdf.py) | مولّد موجز الأدلة العلمي من صفحة واحدة (`A4 PDF`) باللغة الإنجليزية انطلاقاً من الحالة النشطة |
-| [`test_analysis.py`](test_analysis.py) | اختبارات آلية تغطي التجميع السنوي، تطابق ميل السلسلة المقترنة، HAC، خريطة الشبكة، توليد PDF، والبصمات |
-| [`data/`](data/) | لقطات NASA POWER الموثقة لأربع مدن مغربية (`casablanca.json`, `rabat.json`, `marrakech.json`, `ouarzazate.json`) ونتائج مرجعية |
-| [`EarthPulse-Demo.pdf`](EarthPulse-Demo.pdf) | عرض تقديمي تحكيمي من 9 شرائح (بالإنجليزية) |
-| [`screenshots/`](screenshots/) | لقطات واجهة حقيقية ملتقطة بالمتصفح للنسخة النهائية |
-
----
-
-## مصدر البيانات
-
-- **NASA POWER Project (`MERRA-2 Native Resolution Monthly and Annual API v2.10.0`)**: [power.larc.nasa.gov](https://power.larc.nasa.gov/)
-- **إعداد وتطوير:** [hafidaso](https://github.com/hafidaso/earthpulse) — NASA Space Apps Challenge 2026
+### Repository Structure
+- `app.py` — Top-navigation router (`Climate Evidence Lab` [default English], `Expert Analysis` [English], `العربية` [optional Arabic RTL])
+- `lab.py` — Interactive first-visit storytelling experience (*The Climate Evidence Lab*: CASE 001, CASE 002, CASE 003)
+- `expert_en.py` — Full English Expert Analysis workbench (*The Climate Trial*, *Compare: The Trend Verdict*, *Single Location*, and *STEP 1–2–3*)
+- `expert_ar.py` — Full Arabic RTL workbench (*نبض الأرض — محاكمة المناخ*)
+- `analysis.py` — Deterministic aggregation, OLS, Newey–West HAC, paired difference trial, and SHA-256 verification engine
+- `brief_pdf.py` — One-page A4 Scientific Evidence Brief PDF generator (ReportLab)
+- `test_analysis.py` — 20 automated regression tests covering data integrity, statistical identities, PDF generation, and repository hygiene
+- `EarthPulse-Demo.pdf` — Strict **7-slide** judge presentation deck
+- `data/` — Unaltered NASA POWER / MERRA-2 JSON snapshots (`casablanca.json`, `rabat.json`, `marrakech.json`, `ouarzazate.json`) and verified baseline (`results.json`)
+- `REFERENCES.md` & `AI_DISCLOSURE.md` — Complete NASA data citations, methodological references, and AI usage disclosure
