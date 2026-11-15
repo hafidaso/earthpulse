@@ -73,8 +73,7 @@ Use the top navigation bar to switch seamlessly between:
 - **Methodology**: Newey, W. K., & West, K. D. (1987), *Econometrica*, 55(3), 703–708; WMO 30-consecutive-complete-years rule. See [`REFERENCES.md`](REFERENCES.md).
 
 ### AI Usage Disclosure
-In accordance with NASA Space Apps Challenge transparency rules (see [`AI_DISCLOSURE.md`](AI_DISCLOSURE.md)):
-- Generative AI coding tools assisted with Three.js 3D viewport scaffolding, Streamlit UI architecture, bilingual English/Arabic localization, ReportLab vector PDF chart formatting, and automated test authoring.
+- OpenAI Codex and Google Gemini/Argon assisted with Three.js 3D viewport scaffolding, Streamlit UI architecture, bilingual English/Arabic localization, ReportLab vector PDF chart formatting, and automated test authoring.
 - **Zero climate measurements, terrain elevations, coordinates, or statistical outputs were generated or modified by AI.** All datasets come unaltered from NASA POWER and AWS/Mapzen Terrarium tiles, and all statistical numbers are computed deterministically by [`analysis.py`](analysis.py) and verified by **24 automated `pytest` tests** plus headless Playwright E2E checks.
 
 ---

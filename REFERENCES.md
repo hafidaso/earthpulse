@@ -1,4 +1,4 @@
-# References & AI Usage Disclosure
+# References
 
 ## Official NASA Challenge & Data Sources
 - **Official Challenge**: [NASA Space Apps 2026 — "Be An Earth System Trend Detective!"](https://www.spaceappschallenge.org/2026/challenges/earth-system-trend-detective/)
@@ -13,7 +13,3 @@
 
 ## Open-Source Software
 - [Python 3.11+](https://www.python.org/), [Streamlit](https://streamlit.io/), [Three.js](https://threejs.org/) (`r128`), [Plotly](https://plotly.com/python/), [pandas](https://pandas.pydata.org/), [NumPy](https://numpy.org/), [SciPy](https://scipy.org/), [statsmodels](https://www.statsmodels.org/), [Requests](https://requests.readthedocs.io/), [pytest](https://pytest.org/), [ReportLab](https://www.reportlab.com/), [PyMuPDF](https://pymupdf.readthedocs.io/).
-
-## AI Usage Disclosure (NASA Space Apps Transparency Requirement)
-- **AI Assistance**: Generative AI coding assistants were used to assist with software engineering (Three.js 3D terrain explorer component, Streamlit multipage layout, bilingual English/Arabic technical localization, ReportLab vector PDF chart formatting, and automated test scaffolding).
-- **Scientific & Data Integrity**: **No climate measurements, terrain elevations, coordinates, or statistical results were generated or altered by AI.** All bundled JSON records (`data/*.json`, `data/discovery/*_extended.json`) come unaltered from the NASA POWER API (`MERRA-2`), terrain grids come directly from decoded AWS/Mapzen Terrarium tiles (`data/morocco_dem_terrarium.json`), and all slopes, standard errors, `p`-values, and confidence intervals are computed deterministically by `analysis.py` and verified by 24 automated `pytest` tests.
