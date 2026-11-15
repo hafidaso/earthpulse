@@ -1,326 +1,352 @@
-"""EarthPulse — The Climate Evidence Lab (default English first-visit experience).
+"""EarthPulse — Earth Investigation Studio default landing experience."""
+from __future__ import annotations
 
-Every number, verdict and sentence below is derived at runtime from the bundled,
-unaltered NASA POWER / MERRA-2 snapshots via the tested functions in analysis.py.
-Nothing is hard-coded.
-"""
-import json
-from pathlib import Path
-
-import plotly.graph_objects as go
 import streamlit as st
 
-from analysis import (
-    LOCATIONS,
-    climate_trial,
-    compare_locations,
-    evaluate_site,
-    format_bound,
-    format_interval,
-)
-from brief_pdf import build_scientific_evidence_brief_pdf
+import analysis
+import brief_pdf
+import earth_3d
+import studio_ui
 
-START, END = 1991, 2025
-INK, MUTED, TEAL, OCHRE, PAPER, CHART_BG = '#14282d', '#3c5358', '#15616d', '#b55327', '#f5f2eb', '#f9f7f2'
-RATE_UNIT = {'T2M': '°C/decade', 'PRECTOTCORR': 'mm/yr per decade'}
-VAR_NAME = {'T2M': 'air temperature at 2 m', 'PRECTOTCORR': 'annual precipitation'}
-
-st.markdown(
-    """<style>
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap');
-.stApp { background: #f5f2eb; color: #14282d; }
-.block-container { max-width: 1180px; padding-top: 3.2rem !important; padding-bottom: 3rem !important; }
-html, body, p, li, label, button, div { font-family: 'Inter', system-ui, sans-serif; }
-.lab-kicker { font-size: 0.78rem; letter-spacing: 0.16em; text-transform: uppercase; color: #15616d; font-weight: 700; margin-bottom: 0.35rem; }
-.lab-hero { font-family: 'Fraunces', Georgia, serif; font-size: clamp(2.1rem, 4.6vw, 3.5rem); line-height: 1.06; color: #14282d; margin: 0 0 0.6rem 0; text-wrap: balance; font-weight: 700; }
-.lab-sub { font-size: 1.12rem; color: #2f474d; max-width: 46rem; line-height: 1.55; margin-bottom: 1.1rem; text-wrap: pretty; }
-.lab-strip { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-bottom: 1.4rem; }
-.lab-chip { font-size: 0.78rem; color: #2f474d; background: #e7e2d5; border-radius: 999px; padding: 0.2rem 0.75rem; }
-.case-num { font-size: 0.72rem; letter-spacing: 0.14em; color: #b55327; font-weight: 700; }
-.case-title { font-family: 'Fraunces', Georgia, serif; font-size: 1.3rem; color: #14282d; margin: 0.15rem 0 0.35rem 0; font-weight: 700; }
-.case-q { font-size: 0.95rem; color: #2f474d; line-height: 1.5; min-height: 3em; }
-div[data-testid="stVerticalBlockBorderWrapper"] { transition: transform 160ms ease, box-shadow 160ms ease; border-radius: 10px; }
-div[data-testid="stVerticalBlockBorderWrapper"]:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(20,40,45,0.08); }
-.case-stage { font-family: 'Fraunces', Georgia, serif; font-size: clamp(1.5rem, 3vw, 2.15rem); color: #14282d; line-height: 1.15; margin: 0.2rem 0 0.4rem 0; text-wrap: balance; }
-.reveal { animation: epFade 520ms ease both; }
-@keyframes epFade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .reveal { animation: none; } div[data-testid="stVerticalBlockBorderWrapper"]:hover { transform: none; } }
-.verdict { border-radius: 10px; padding: 1rem 1.15rem; margin: 0.3rem 0 0.8rem 0; border-inline-start: 6px solid; }
-.verdict-yes { background: #f6e6dc; border-color: #b55327; }
-.verdict-inc { background: #e4ecec; border-color: #15616d; }
-.verdict-label { font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 700; color: #3c5358; }
-.verdict-head { font-family: 'Fraunces', Georgia, serif; font-size: 1.45rem; color: #14282d; margin: 0.15rem 0 0.35rem 0; }
-.verdict p { margin: 0.2rem 0; color: #14282d; line-height: 1.55; max-width: 75ch; }
-.caveat { font-size: 0.9rem; color: #2f474d; background: #faf8f3; border: 1px dashed #c9c1ad; border-radius: 8px; padding: 0.65rem 0.9rem; margin: 0.4rem 0 0.8rem 0; }
-.num { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
-.foot { font-size: 0.8rem; color: #3c5358; border-top: 1px solid #d6d0c2; padding-top: 0.7rem; margin-top: 2rem; }
-</style>""",
-    unsafe_allow_html=True,
+studio_ui.inject_studio_styles()
+studio_ui.render_masthead(
+    title='The climate tells a story. Can you prove it?',
+    subtitle='From the planet to the proof. Investigate NASA POWER climate records inside 3D Morocco terrain, challenge statistical assumptions, and verify every conclusion.',
 )
 
+if 'lab_focus_city' not in st.session_state:
+    st.session_state['lab_focus_city'] = 'Marrakech'
+if 'lab_case_choice' not in st.session_state:
+    st.session_state['lab_case_choice'] = 'CASE 001 — THE TWO CITIES'
 
-@st.cache_data(show_spinner=False)
-def load_snapshot(city):
-    return json.loads((Path(__file__).parent / 'data' / f'{city.lower()}.json').read_text())
+# Active Studio Investigation Strip
+focus_city = st.session_state['lab_focus_city']
+target_b = focus_city if focus_city != 'Casablanca' else 'Marrakech'
 
+studio_ui.render_journey_bar(active_step=1)
 
-def zero_whisker(rows, rate_unit, height=280):
-    """rows: list of (label, slope, ci, color, symbol). Draws intervals against the zero line."""
-    fig = go.Figure()
-    for i, (label, slope, ci, color, symbol) in enumerate(rows):
-        fig.add_trace(go.Scatter(
-            x=[slope], y=[label], mode='markers', showlegend=False,
-            marker=dict(size=12, color=color, symbol=symbol),
-            error_x=dict(type='data', symmetric=False, array=[ci[1] - slope], arrayminus=[slope - ci[0]], color=color, thickness=3, width=7),
-            hovertemplate=f'<b>{label}</b><br>slope {slope:+.3f} {rate_unit}<br>95% CI [{ci[0]:+.3f}, {ci[1]:+.3f}]<extra></extra>',
-        ))
-    fig.add_vline(x=0, line_width=2, line_color=INK)
-    fig.add_annotation(x=0, y=1.08, yref='paper', text='zero = no trend', showarrow=False, font=dict(size=11, color=MUTED))
-    fig.update_layout(
-        height=height, margin=dict(l=10, r=20, t=30, b=40), paper_bgcolor=CHART_BG, plot_bgcolor=CHART_BG,
-        font=dict(family='Inter, sans-serif', color=INK, size=13),
-        xaxis=dict(title=f'Trend ({rate_unit}) with 95% interval', gridcolor='#e3ded2', zeroline=False),
-        yaxis=dict(autorange='reversed', gridcolor='#ece8de'),
+# STAGE 1: 3D EARTH EVIDENCE EXPLORER
+st.markdown('<p class="ep-sec-kicker">STAGE 1 · EXPLORE EARTH & MERRA-2 SPATIAL CONTEXT</p>', unsafe_allow_html=True)
+st.markdown('<h2 class="ep-h2">3D Topographic Context & Approximate Reanalysis Scale</h2>', unsafe_allow_html=True)
+
+c_ctrl1, c_ctrl2, c_ctrl3 = st.columns([1.4, 1.0, 1.0])
+with c_ctrl1:
+    case_choice = st.selectbox(
+        'Investigation Case',
+        [
+            'CASE 001 — THE TWO CITIES',
+            'CASE 002 — THE FALSE CERTAINTY',
+            'CASE 003 — THE RAINFALL QUESTION',
+        ],
+        key='lab_case_choice',
     )
-    return fig
-
-
-def prediction_block(case_key, options):
-    return st.radio(
-        'Before you look — what do you predict? (optional)',
-        options, index=None, horizontal=True, key=f'pred_{case_key}',
+with c_ctrl2:
+    start_year = st.slider('Analysis start year (>=30 yr required)', 1991, 1996, 1991, key='lab_start_yr')
+with c_ctrl3:
+    lens_choice = st.selectbox(
+        'Uncertainty assumption',
+        ['Cautious max(SE_OLS, SE_HAC)', 'Raw Newey–West HAC (SE_HAC)', 'Conventional OLS (SE_OLS)'],
+        index=0,
+        key='lab_lens_choice',
     )
 
+lens_map = {
+    'Cautious max(SE_OLS, SE_HAC)': 'cautious',
+    'Raw Newey–West HAC (SE_HAC)': 'hac',
+    'Conventional OLS (SE_OLS)': 'conventional',
+}
+interval_mode = lens_map[lens_choice]
+active_param_3d = 'PRECTOTCORR' if case_choice.startswith('CASE 003') else 'T2M'
 
-def prediction_feedback(pred, options, correct_idx):
-    if pred is None:
-        return
-    if options.index(pred) == correct_idx:
-        st.success(f'Your prediction ("{pred}") matches what the NASA data supports.')
-    else:
-        st.info(f'You predicted "{pred}". The evidence points to: "{options[correct_idx]}". That gap is exactly why we test claims.')
+exp_event = earth_3d.render_earth_explorer(
+    selected_city=focus_city,
+    compare_city='Casablanca' if focus_city != 'Casablanca' else 'Marrakech',
+    parameter=active_param_3d,
+    start=start_year,
+    end=2025,
+    interval_mode=interval_mode,
+    key_prefix='lab_3d',
+)
+if exp_event['changed']:
+    st.session_state['lab_focus_city'] = exp_event['selected_city']
+    st.rerun()
 
+# Load datasets cleanly from verified offline NASA snapshots
+data_casa = analysis.load_city_dataset('Casablanca', parameter=active_param_3d)
+data_focus = analysis.load_city_dataset(focus_city, parameter=active_param_3d)
+data_target_b = analysis.load_city_dataset(target_b, parameter='T2M')
+data_casa_t2m = analysis.load_city_dataset('Casablanca', parameter='T2M')
+data_rain_focus = analysis.load_city_dataset(focus_city, parameter='PRECTOTCORR')
 
-def evidence_footer(case_key, pdf_bytes, pdf_name):
-    c1, c2, c3 = st.columns([1.2, 1, 1])
-    c1.download_button('Download Evidence Passport (PDF)', data=pdf_bytes, file_name=pdf_name, mime='application/pdf',
-                       type='primary', use_container_width=True, key=f'pdf_{case_key}')
-    with c2:
-        st.page_link('expert_en.py', label='Open full Expert Analysis →', icon='🔬')
-    with c3:
-        st.page_link('expert_ar.py', label='التحليل المتقدم بالعربية', icon='🌐')
+# STAGE 2 & 3: QUESTION & PREDICT
+st.markdown('<p class="ep-sec-kicker">STAGE 2 & 3 · QUESTION & PREDICT BEFORE TESTING</p>', unsafe_allow_html=True)
 
+if case_choice.startswith('CASE 001'):
+    q_title = f"Is {target_b} warming faster than Casablanca?"
+    q_subtitle = (
+        f"Both cities sit in the same regional latitudes, separated by the Atlantic Ocean and interior plain topography. "
+        f"Click any city on the 3D Earth Explorer above to pair it against Casablanca (currently: <strong>{target_b}</strong> vs <strong>Casablanca</strong>)."
+    )
+    pred_options = [
+        f"Yes — {target_b} is clearly warming faster",
+        'Maybe — year-to-year climate swings could mask a real gap',
+        f"No — Casablanca and {target_b} warm at basically the same rate",
+    ]
+    pred_key = f'pred_case001_{target_b}'
+elif case_choice.startswith('CASE 002'):
+    q_title = f"Can ignoring time dependence change a climate verdict? ({focus_city})"
+    q_subtitle = (
+        "Consecutive years share slow ocean–atmosphere persistence. Standard OLS assumes yearly residuals are completely independent. "
+        "Does testing with autocorrelation-aware HAC errors flip the verdict?"
+    )
+    pred_options = [
+        'No — standard regression confidence intervals stay just as reliable',
+        'Yes — assuming yearly independence can make noisy trends look decisive',
+    ]
+    pred_key = f'pred_case002_{focus_city}'
+else:
+    q_title = f"Can we establish a precipitation trend in {focus_city}?"
+    q_subtitle = (
+        "North African precipitation swings sharply between multi-year drought and wet winters. "
+        "Do 35 years of NASA POWER precipitation records prove an upward or downward shift?"
+    )
+    pred_options = [
+        f'Yes — {focus_city} has a decisive drying or wetting trend',
+        'No — year-to-year rainfall variability dominates any clear linear slope',
+    ]
+    pred_key = f'pred_case003_{focus_city}'
 
-# ---------------------------------------------------------------- hero
-st.markdown('<div class="lab-kicker">EarthPulse · The Climate Evidence Lab · NASA Space Apps 2026</div>', unsafe_allow_html=True)
-st.markdown('<h1 class="lab-hero">The climate tells a story. Can you prove it?</h1>', unsafe_allow_html=True)
-st.markdown(
-    '<p class="lab-sub">Investigate NASA climate data. Challenge statistical claims. '
-    'Discover what the evidence really supports.</p>'
-    '<div class="lab-strip"><span class="lab-chip">NASA POWER · MERRA-2 monthly data</span>'
-    '<span class="lab-chip">4 Moroccan grid cells · 1991–2025 · 35 complete years</span>'
-    '<span class="lab-chip">OLS vs. Newey–West HAC uncertainty</span>'
-    '<span class="lab-chip">Exploratory analysis · not a forecast</span></div>',
-    unsafe_allow_html=True,
+st.markdown(f'<h2 class="ep-h2">{q_title}</h2>', unsafe_allow_html=True)
+st.markdown(f'<p class="ep-prose">{q_subtitle}</p>', unsafe_allow_html=True)
+
+pred_col, act_col = st.columns([2.2, 1.0])
+with pred_col:
+    user_pred = st.radio('What do you expect the NASA evidence to support? (Optional prediction)', pred_options, key=pred_key)
+with act_col:
+    if focus_city != 'Marrakech' and case_choice.startswith('CASE 001'):
+        if st.button('Reset Case 001 to Marrakech vs Casablanca', use_container_width=True):
+            st.session_state['lab_focus_city'] = 'Marrakech'
+            st.rerun()
+
+# STAGE 4 & 5: TEST DATA & CHALLENGE ASSUMPTIONS
+st.markdown('<p class="ep-sec-kicker">STAGE 4 & 5 · TEST EVIDENCE & CHALLENGE ASSUMPTIONS</p>', unsafe_allow_html=True)
+
+if case_choice.startswith('CASE 001'):
+    trial = analysis.climate_trial(
+        'Casablanca',
+        data_casa_t2m,
+        target_b,
+        data_target_b,
+        parameter='T2M',
+        start=start_year,
+        end=2025,
+        interval_mode=interval_mode,
+    )
+    comp = None
+    single_site = None
+    seasonal_data = None
+    pdf_question = q_title
+    pdf_param = 'T2M'
+    pdf_loc_a, pdf_lat_a, pdf_lon_a, pdf_data_a = ('Casablanca', *analysis.LOCATIONS['Casablanca'], data_casa_t2m)
+    pdf_loc_b, pdf_lat_b, pdf_lon_b, pdf_data_b = (target_b, *analysis.LOCATIONS[target_b], data_target_b)
+
+    sa = trial['site_a']
+    sb = trial['site_b']
+    diff_res = trial['diff_result']
+    ex0 = trial['active_excludes_zero']
+    box_cls = 'is-amber' if ex0 and diff_res['slope_decade'] > 0 else ('is-teal' if ex0 else 'is-slate')
+    badge_cls = 'is-amber' if ex0 and diff_res['slope_decade'] > 0 else ('is-teal' if ex0 else 'is-slate')
+    badge_symbol = '◆ POSITIVE DIFFERENCE (EXCLUDES ZERO)' if (ex0 and diff_res['slope_decade'] > 0) else ('▲ NEGATIVE DIFFERENCE (EXCLUDES ZERO)' if ex0 else '● INCONCLUSIVE (CROSSES ZERO)')
+
+    st.markdown(
+        f"""
+        <div class="ep-verdict-box {box_cls}">
+          <span class="ep-badge {badge_cls}">{badge_symbol}</span>
+          <h3 style="margin:0 0 0.35rem 0; font-size:1.12rem;">{trial['verdict_label']}</h3>
+          <p class="ep-prose" style="margin:0;">{trial['interpretation']} {trial['overlap_insight']}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric(
+        f"Casablanca slope",
+        f"{analysis.format_bound(sa['result']['slope_decade'])} °C/dec",
+        sa['active_status'],
+        delta_color='off',
+    )
+    m2.metric(
+        f"{target_b} slope",
+        f"{analysis.format_bound(sb['result']['slope_decade'])} °C/dec",
+        sb['active_status'],
+        delta_color='off',
+    )
+    m3.metric(
+        f"Paired difference D = {target_b} − Casa",
+        f"{analysis.format_bound(diff_res['slope_decade'])} °C/dec",
+        f"p = {trial['active_p']:.2e}",
+        delta_color='off',
+    )
+    m4.metric(
+        'Paired 95% Interval',
+        analysis.format_interval(trial['active_ci'], ''),
+        f"n = {trial['n_paired']} paired years",
+        delta_color='off',
+    )
+
+    ch1, ch2 = st.columns(2)
+    with ch1:
+        st.plotly_chart(studio_ui.build_dual_city_fig(sa, sb, 'T2M'), use_container_width=True, key='lab_dual_fig')
+    with ch2:
+        st.plotly_chart(studio_ui.build_diff_trial_fig(trial, 'Casablanca', target_b, '°C/dec', '°C'), use_container_width=True, key='lab_diff_fig')
+
+    # 4-Level summary content
+    plain_ans = (
+        f"Over {start_year}–2025, pairing each calendar year removes shared Moroccan regional heatwaves and cool years. "
+        + (f"{target_b} warms faster than Casablanca by {analysis.format_bound(diff_res['slope_decade'])} °C/decade." if ex0 else "The paired difference interval crosses zero, so the evidence is inconclusive (not proof of equal warming).")
+    )
+    key_nums = (
+        f"Casablanca: {analysis.format_bound(sa['result']['slope_decade'])} [{analysis.format_interval(sa['active_ci'], '')}] · "
+        f"{target_b}: {analysis.format_bound(sb['result']['slope_decade'])} [{analysis.format_interval(sb['active_ci'], '')}] · "
+        f"Difference D: {analysis.format_bound(diff_res['slope_decade'])} °C/dec (95% CI {analysis.format_interval(trial['active_ci'], '°C/dec')})."
+    )
+    meth_txt = (
+        f"D(year) = {target_b}(year) − Casablanca(year). OLS slope matches slope(B) − slope(A) to {trial['slope_diff_identity_delta']:.1e}. "
+        f"Active error mode: {lens_choice} with {diff_res['hac_lags']} Newey–West lags."
+    )
+    sha_c = analysis.source_sha256('Casablanca', data_casa_t2m)['sha256'][:14]
+    sha_b = analysis.source_sha256(target_b, data_target_b)['sha256'][:14]
+    prov_txt = f"NASA POWER MERRA-2 0.5° × 0.625° · Casa SHA-256: {sha_c}… · {target_b} SHA-256: {sha_b}…"
+
+elif case_choice.startswith('CASE 002'):
+    data_c2 = analysis.load_city_dataset(focus_city, parameter='T2M')
+    site_c2 = analysis.evaluate_site(focus_city, data_c2, 'T2M', start_year, 2025, interval_mode=interval_mode)
+    res_c2 = site_c2['result']
+    lens_info = analysis.uncertainty_lens_summary(res_c2)
+    trial = None
+    comp = None
+    single_site = site_c2
+    seasonal_data = analysis.seasonal_fingerprints(focus_city, data_c2, 'T2M', start_year, 2025, interval_mode=interval_mode)
+    pdf_question = q_title
+    pdf_param = 'T2M'
+    pdf_loc_a, pdf_lat_a, pdf_lon_a, pdf_data_a = (focus_city, *analysis.LOCATIONS[focus_city], data_c2)
+    pdf_loc_b, pdf_lat_b, pdf_lon_b, pdf_data_b = (None, None, None, None)
+
+    verdict_flipped = bool(site_c2['time_dependence_changes_verdict'])
+    badge_txt = '◆ VERDICT FLIPS WHEN TIME DEPENDENCE IS INCLUDED' if verdict_flipped else ('◆ CONSISTENT SIGNAL ACROSS ASSUMPTIONS' if lens_info['cautious_excludes_zero'] else '● INTERVAL CROSSES ZERO ACROSS ASSUMPTIONS')
+    st.markdown(
+        f"""
+        <div class="ep-verdict-box {'is-amber' if verdict_flipped else 'is-teal'}">
+          <span class="ep-badge {'is-amber' if verdict_flipped else 'is-teal'}">{badge_txt}</span>
+          <h3 style="margin:0 0 0.35rem 0; font-size:1.12rem;">{focus_city}: OLS SE vs. Raw Newey–West HAC vs. Cautious Safeguard</h3>
+          <p class="ep-prose" style="margin:0;">
+            OLS assumes residuals are independent across years (SE_OLS = {lens_info['se_ols_decade']:.4f} °C/dec, 95% CI {analysis.format_interval(lens_info['ols_ci95'], '°C/dec')}, p = {res_c2['iid_p']:.4g}).
+            Accounting for lag-1 persistence (r₁ = {res_c2['residual_lag1']:+.2f}, {res_c2['hac_lags']} lags) yields Raw SE_HAC = {lens_info['se_hac_decade']:.4f} °C/dec
+            (HAC/OLS ratio = {lens_info['hac_to_ols_se_ratio']:.2f}× — relative SE change only, NOT a false-positive rate),
+            and cautious 95% CI {analysis.format_interval(lens_info['cautious_ci95'], '°C/dec')} (p = {res_c2['p_value']:.4g}).
+          </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    c_ols, c_hac, c_cau, c_ratio = st.columns(4)
+    c_ols.metric('Conv. OLS SE', f"{lens_info['se_ols_decade']:.4f}", 'Excludes 0' if lens_info['ols_excludes_zero'] else 'Crosses 0', delta_color='off')
+    c_hac.metric('Raw HAC SE', f"{lens_info['se_hac_decade']:.4f}", 'Excludes 0' if lens_info['hac_excludes_zero'] else 'Crosses 0', delta_color='off')
+    c_cau.metric('Cautious max SE', f"{lens_info['se_cautious_decade']:.4f}", 'Excludes 0' if lens_info['cautious_excludes_zero'] else 'Crosses 0', delta_color='off')
+    c_ratio.metric('SE_HAC / SE_OLS', f"{lens_info['hac_to_ols_se_ratio']:.2f}×", 'Relative SE change only', delta_color='off')
+
+    # Seasonal Fingerprint teaser revealing autumn/summer shifts inside annual series
+    st.markdown(f"**Does the annual record in {focus_city} hide a seasonal signal?** Explore seasonal fingerprints below (exploratory 4-season slice):")
+    st.plotly_chart(studio_ui.build_seasonal_whisker_fig(seasonal_data), use_container_width=True, key='lab_case002_seas')
+
+    plain_ans = (
+        f"In {focus_city}, conventional OLS says 95% CI {analysis.format_interval(lens_info['ols_ci95'], '°C/dec')}, "
+        f"whereas cautious time-dependent bounds give {analysis.format_interval(lens_info['cautious_ci95'], '°C/dec')}. "
+        + ("Naive independence makes an inconclusive annual average look statistically decisive!" if verdict_flipped else "Notice also how seasonal sub-trends (especially SON) differ from the smoothed annual average.")
+    )
+    key_nums = f"Slope = {analysis.format_bound(res_c2['slope_decade'])} °C/dec · SE_OLS = {lens_info['se_ols_decade']:.4f} · Raw SE_HAC = {lens_info['se_hac_decade']:.4f} · Ratio = {lens_info['hac_to_ols_se_ratio']:.2f}×."
+    meth_txt = f"Bartlett kernel Newey–West HAC ({res_c2['hac_lags']} lags, finite-sample t df={res_c2['n']-2}); cautious safeguard uses max(SE_OLS, SE_HAC) to prevent accidental small-sample downward HAC variance shrinkage."
+    sha_f = analysis.source_sha256(focus_city, data_c2)['sha256'][:14]
+    prov_txt = f"Unaltered NASA POWER snapshot ({focus_city.lower()}.json) · SHA-256: {sha_f}…"
+
+else:
+    site_r = analysis.evaluate_site(focus_city, data_rain_focus, 'PRECTOTCORR', start_year, 2025, interval_mode=interval_mode)
+    res_r = site_r['result']
+    trial = None
+    comp = None
+    single_site = site_r
+    seasonal_data = None
+    pdf_question = q_title
+    pdf_param = 'PRECTOTCORR'
+    pdf_loc_a, pdf_lat_a, pdf_lon_a, pdf_data_a = (focus_city, *analysis.LOCATIONS[focus_city], data_rain_focus)
+    pdf_loc_b, pdf_lat_b, pdf_lon_b, pdf_data_b = (None, None, None, None)
+
+    ex0_r = site_r['active_excludes_zero']
+    st.markdown(
+        f"""
+        <div class="ep-verdict-box is-slate">
+          <span class="ep-badge is-slate">{'◆ EXCLUDES ZERO' if ex0_r else '● INCONCLUSIVE (CROSSES ZERO — NOT PROOF OF ZERO CHANGE)'}</span>
+          <h3 style="margin:0 0 0.35rem 0; font-size:1.12rem;">{focus_city}: Annual Precipitation Slope = {analysis.format_bound(res_r['slope_decade'])} mm/year/decade</h3>
+          <p class="ep-prose" style="margin:0;">
+            With wide 95% confidence interval {analysis.format_interval(site_r['active_ci'], 'mm/year/dec')} (p = {site_r['active_p']:.3g}),
+            natural interannual wet/dry variability dwarfs any smooth linear trend over {res_r['n']} years.
+            <strong>Inconclusive means zero is not excluded — never conclude rainfall is unchanging.</strong>
+          </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    fig_r = studio_ui.build_dual_city_fig(
+        site_r,
+        {'location': 'Reference', 'frame': site_r['frame'].iloc[0:0], 'eligible': False},
+        'PRECTOTCORR',
+    )
+    fig_r.data = fig_r.data[:2]
+    st.plotly_chart(fig_r, use_container_width=True, key='lab_rain_fig')
+
+    plain_ans = f"Over {res_r['n']} years in {focus_city}, rainfall fluctuates strongly year to year; a linear trend is inconclusive (interval crosses zero), which is NOT evidence of no change."
+    key_nums = f"Mean = {res_r['mean']:.1f} mm/yr · Slope = {analysis.format_bound(res_r['slope_decade'])} mm/yr/dec · 95% CI {analysis.format_interval(site_r['active_ci'], 'mm/yr/dec')} · R² = {res_r['r_squared']:.3f}."
+    meth_txt = "Sum of daily precipitation rate × calendar days/month (leap years preserved); PRECTOTCORR >= 0 validated across all 12 months."
+    sha_r = analysis.source_sha256(focus_city, data_rain_focus)['sha256'][:14]
+    prov_txt = f"NASA POWER PRECTOTCORR (mm/day -> mm/yr) · SHA-256: {sha_r}…"
+
+studio_ui.render_four_level_summary(plain_ans, key_nums, meth_txt, prov_txt)
+
+# STAGE 6: VERIFY & DOWNLOAD ONE-PAGE EVIDENCE PASSPORT V4
+st.markdown('<p class="ep-sec-kicker">STAGE 6 · VERIFY EVIDENCE PASSPORT V4 & EXPLORE FURTHER</p>', unsafe_allow_html=True)
+pdf_bytes = brief_pdf.build_scientific_evidence_brief_pdf(
+    question=pdf_question,
+    parameter=pdf_param,
+    start=start_year,
+    end=2025,
+    loc_a=pdf_loc_a,
+    lat_a=pdf_lat_a,
+    lon_a=pdf_lon_a,
+    data_a=pdf_data_a,
+    loc_b=pdf_loc_b,
+    lat_b=pdf_lat_b,
+    lon_b=pdf_lon_b,
+    data_b=pdf_data_b,
+    trial=trial,
+    comp=comp,
+    single_site=single_site,
+    interval_mode=interval_mode,
 )
 
-CASES = [
-    ('case1', 'CASE 001', 'The Two Cities', 'Is Marrakech warming faster than Casablanca?'),
-    ('case2', 'CASE 002', 'The False Certainty', 'Can ignoring time dependence change a climate verdict?'),
-    ('case3', 'CASE 003', 'The Rainfall Question', 'Can we establish a rainfall trend in these cities?'),
-]
-st.session_state.setdefault('lab_case', None)
-
-
-def _open(case_key):
-    st.session_state['lab_case'] = case_key
-
-
-cols = st.columns(3)
-for col, (key, num, title, q) in zip(cols, CASES):
-    with col:
-        with st.container(border=True):
-            st.markdown(f'<div class="case-num">{num}</div><div class="case-title">{title}</div><div class="case-q">{q}</div>', unsafe_allow_html=True)
-            active = st.session_state['lab_case'] == key
-            st.button('Investigating ✓' if active else 'Open case →', key=f'open_{key}', on_click=_open, args=(key,),
-                      type='primary' if active else 'secondary', use_container_width=True)
-
-case = st.session_state['lab_case']
-if case is None:
-    st.caption('Choose a case to begin. Each one takes under a minute, and every result is computed live from the bundled NASA files.')
-
-# ---------------------------------------------------------------- CASE 001
-if case == 'case1':
-    casa, marr = load_snapshot('Casablanca'), load_snapshot('Marrakech')
-    trial = climate_trial('Casablanca', casa, 'Marrakech', marr, parameter='T2M', start=START, end=END)
-    comp = compare_locations('Casablanca', casa, 'Marrakech', marr, parameter='T2M', start=START, end=END)
-    opts = ['Yes — significantly faster', 'No — significantly slower', "The data can't tell"]
-    correct = {'positive_difference': 0, 'negative_difference': 1}.get(trial['verdict_code'], 2)
-
-    st.markdown('<div class="case-num" style="margin-top:1.4rem;">CASE 001 · THE TWO CITIES</div>'
-                '<div class="case-stage">Is Marrakech warming faster than Casablanca?</div>', unsafe_allow_html=True)
-    st.write('Both cities warmed between 1991 and 2025. The real question is whether the gap between their warming rates '
-             'is larger than year-to-year noise. EarthPulse tests the difference directly: it subtracts the two annual '
-             'series year by year, D(year) = Marrakech − Casablanca, and asks whether that difference has a trend.')
-    pred = prediction_block('case1', opts)
-    if st.button('Reveal the evidence', key='rev_case1', type='primary'):
-        st.session_state['revealed_case1'] = True
-
-    if st.session_state.get('revealed_case1'):
-        dr = trial['diff_result']
-        ra, rb = trial['aligned_site_a_result'], trial['aligned_site_b_result']
-        ci = trial['active_ci']
-        st.markdown('<div class="reveal">', unsafe_allow_html=True)
-        left, right = st.columns([1.25, 1])
-        with left:
-            m = trial['merged']
-            fig = go.Figure()
-            fig.add_trace(go.Bar(x=m['year'], y=m['diff'], marker_color=[OCHRE if v > 0 else TEAL for v in m['diff']],
-                                 name='D(year) = Marrakech − Casablanca', hovertemplate='%{x}: %{y:+.2f} °C<extra></extra>'))
-            fig.add_trace(go.Scatter(x=m['year'], y=m['fitted_diff'], mode='lines', line=dict(color=INK, width=3),
-                                     name=f'Trend of the gap: {format_bound(dr["slope_decade"])} °C/decade'))
-            fig.add_hline(y=0, line_width=1.5, line_color=MUTED)
-            fig.update_layout(height=320, margin=dict(l=10, r=10, t=10, b=10), paper_bgcolor=CHART_BG, plot_bgcolor=CHART_BG,
-                              legend=dict(orientation='h', y=-0.18), yaxis_title='Gap (°C)', font=dict(family='Inter, sans-serif', color=INK))
-            st.plotly_chart(fig, use_container_width=True)
-        with right:
-            st.plotly_chart(zero_whisker([
-                ('Casablanca alone', ra['slope_decade'], ra['ci95'], TEAL, 'circle'),
-                ('Marrakech alone', rb['slope_decade'], rb['ci95'], OCHRE, 'diamond'),
-                ('The gap (B − A)', dr['slope_decade'], ci, INK, 'star'),
-            ], '°C/decade', height=320), use_container_width=True)
-
-        decisive = trial['verdict_code'] in ('positive_difference', 'negative_difference')
-        direction = 'faster' if trial['verdict_code'] == 'positive_difference' else 'slower'
-        head = (f'Yes, the evidence supports it: Marrakech is warming {direction} than Casablanca.' if decisive
-                else 'Inconclusive: the data cannot settle this claim.')
-        st.markdown(
-            f'<div class="verdict {"verdict-yes" if decisive else "verdict-inc"}">'
-            f'<div class="verdict-label">Computed verdict · cautious max(SE_OLS, SE_HAC) interval</div>'
-            f'<div class="verdict-head">{head}</div>'
-            f'<p>The warming gap grows by <span class="num">{format_bound(dr["slope_decade"])} °C/decade</span> '
-            f'(95% interval <span class="num">{format_interval(ci, "")}</span>, exploratory p = <span class="num">{trial["active_p"]:.2g}</span>, '
-            f'{trial["n_paired"]} paired years).</p>'
-            f'<p>Notice the trap: the two single-city intervals overlap, which tempts people to say "no difference". '
-            f'Pairing years cancels weather both cities share (correlation r = <span class="num">{trial["residual_correlation"]:+.2f}</span>), '
-            f'so the test of the gap is far sharper than comparing two separate intervals.</p></div>',
-            unsafe_allow_html=True,
-        )
-        prediction_feedback(pred, opts, correct)
-        st.markdown('<div class="caveat"><b>What this does not show:</b> these are ~50 km reanalysis grid cells, not city weather stations, '
-                    'and the analysis is exploratory (no correction for testing many pairs). '
-                    'An inconclusive result would mean "not established", never "proven equal".</div>', unsafe_allow_html=True)
-        pdf = build_scientific_evidence_brief_pdf(
-            question='Is Marrakech warming faster than Casablanca?', parameter='T2M', start=START, end=END,
-            loc_a='Casablanca', lat_a=LOCATIONS['Casablanca'][0], lon_a=LOCATIONS['Casablanca'][1], data_a=casa,
-            loc_b='Marrakech', lat_b=LOCATIONS['Marrakech'][0], lon_b=LOCATIONS['Marrakech'][1], data_b=marr,
-            trial=trial, comp=comp, interval_mode='cautious')
-        evidence_footer('case1', pdf, f'earthpulse_case001_Casablanca_Marrakech_T2M_{START}_{END}.pdf')
-        st.markdown('</div>', unsafe_allow_html=True)
-
-# ---------------------------------------------------------------- CASE 002
-if case == 'case2':
-    city_options = ['Casablanca', 'Marrakech', 'Rabat', 'Ouarzazate']
-    st.markdown('<div class="case-num" style="margin-top:1.4rem;">CASE 002 · THE FALSE CERTAINTY</div>'
-                '<div class="case-stage">Can ignoring time dependence change a climate verdict?</div>', unsafe_allow_html=True)
-    st.write('Standard regression (OLS) treats every year as independent. But warm years tend to follow warm years. '
-             'When that "memory" is ignored, uncertainty is understated and a trend can look more certain than it is. '
-             'Newey–West HAC standard errors account for it.')
-    city = st.selectbox('Grid cell to investigate', city_options, index=0, key='case2_city')
-    site = evaluate_site(city, load_snapshot(city), 'T2M', START, END)
-    res = site['result']
-    opts = ['Yes — the verdict flips', 'No — the verdict holds']
-    correct = 0 if site['time_dependence_changes_verdict'] else 1
-    pred = prediction_block(f'case2_{city}', opts)
-    if st.button('Reveal the evidence', key='rev_case2', type='primary'):
-        st.session_state['revealed_case2'] = True
-
-    if st.session_state.get('revealed_case2'):
-        st.markdown('<div class="reveal">', unsafe_allow_html=True)
-        left, right = st.columns([1.2, 1])
-        with left:
-            st.plotly_chart(zero_whisker([
-                ('OLS (years independent)', res['slope_decade'], res['iid_ci95'], MUTED, 'circle-open'),
-                ('Newey–West HAC (cautious)', res['slope_decade'], res['ci95'], OCHRE, 'circle'),
-            ], '°C/decade', height=260), use_container_width=True)
-        with right:
-            st.metric('Warming trend', f'{format_bound(res["slope_decade"])} °C/decade')
-            st.metric('Year-to-year residual memory ρ₁', f'{res["residual_lag1"]:+.2f}')
-            st.metric('SE_HAC / SE_OLS', f'{res["hac_to_ols_se_ratio"]:.2f}×',
-                      help='Relative change in the estimated standard error. It is NOT a Type-I error or false-positive rate.')
-        flips = site['time_dependence_changes_verdict']
-        ols_txt = 'excludes zero' if site['iid_excludes_zero'] else 'crosses zero'
-        hac_txt = 'excludes zero' if site['cautious_excludes_zero'] else 'crosses zero'
-        head = (f'Yes. In {city}, accounting for time dependence turns a "significant" warming trend into an inconclusive one.' if flips
-                else f'No. In {city}, the verdict is the same under both assumptions.')
-        st.markdown(
-            f'<div class="verdict {"verdict-yes" if flips else "verdict-inc"}">'
-            f'<div class="verdict-label">Computed from {res["n"]} complete years, {START}–{END}</div>'
-            f'<div class="verdict-head">{head}</div>'
-            f'<p>OLS interval <span class="num">{format_interval(res["iid_ci95"], "")}</span> {ols_txt}. '
-            f'The cautious HAC interval <span class="num">{format_interval(res["ci95"], "")}</span> {hac_txt}.</p>'
-            f'<p>The estimated trend is identical in both cases. Only our honesty about uncertainty changes.</p></div>',
-            unsafe_allow_html=True,
-        )
-        prediction_feedback(pred, opts, correct)
-        st.markdown('<div class="caveat"><b>Read carefully:</b> an interval that crosses zero means the warming trend is <i>not established</i> '
-                    'with this record. It is not evidence that the climate is stable. With only ~35 annual values, HAC estimates themselves are uncertain. '
-                    'Try Marrakech or Ouarzazate to see a trend that survives both lenses.</div>', unsafe_allow_html=True)
-        lat, lon = LOCATIONS[city]
-        pdf = build_scientific_evidence_brief_pdf(
-            question=f'Does ignoring time dependence change the warming verdict for {city}?', parameter='T2M', start=START, end=END,
-            loc_a=city, lat_a=lat, lon_a=lon, data_a=load_snapshot(city), single_site=site, interval_mode='cautious')
-        evidence_footer('case2', pdf, f'earthpulse_case002_{city}_T2M_{START}_{END}.pdf')
-        st.markdown('</div>', unsafe_allow_html=True)
-
-# ---------------------------------------------------------------- CASE 003
-if case == 'case3':
-    cities = ['Casablanca', 'Rabat', 'Marrakech', 'Ouarzazate']
-    st.markdown('<div class="case-num" style="margin-top:1.4rem;">CASE 003 · THE RAINFALL QUESTION</div>'
-                '<div class="case-stage">Can we establish a rainfall trend in these cities?</div>', unsafe_allow_html=True)
-    st.write('Rainfall in Morocco swings wildly from one year to the next. A fitted line will always have some slope. '
-             'The question is whether 35 years of NASA data are enough to separate a real trend from that variability.')
-    opts = ['Yes — at least one city shows a clear trend', 'No — not established anywhere']
-    sites = {c: evaluate_site(c, load_snapshot(c), 'PRECTOTCORR', START, END) for c in cities}
-    clear = [c for c, s in sites.items() if s['eligible'] and s['cautious_excludes_zero']]
-    correct = 0 if clear else 1
-    pred = prediction_block('case3', opts)
-    if st.button('Reveal the evidence', key='rev_case3', type='primary'):
-        st.session_state['revealed_case3'] = True
-
-    if st.session_state.get('revealed_case3'):
-        st.markdown('<div class="reveal">', unsafe_allow_html=True)
-        colors = [TEAL, TEAL, OCHRE, OCHRE]
-        rows = [(c, s['result']['slope_decade'], s['result']['ci95'], col, 'circle') for (c, s), col in zip(sites.items(), colors) if s['eligible']]
-        st.plotly_chart(zero_whisker(rows, RATE_UNIT['PRECTOTCORR'], height=300), use_container_width=True)
-        if clear:
-            head = f'A trend is established in {len(clear)} of {len(rows)} cells: {", ".join(clear)}.'
-        else:
-            head = f'Not established: all {len(rows)} rainfall intervals cross zero.'
-        detail = ' · '.join(f'{c}: <span class="num">{format_bound(s["result"]["slope_decade"])}</span> '
-                            f'<span class="num">{format_interval(s["result"]["ci95"], "")}</span>' for c, s in sites.items() if s['eligible'])
-        st.markdown(
-            f'<div class="verdict {"verdict-yes" if clear else "verdict-inc"}">'
-            f'<div class="verdict-label">Computed verdict · mm/yr per decade · cautious 95% intervals</div>'
-            f'<div class="verdict-head">{head}</div><p>{detail}</p>'
-            f'<p>This is the most important lesson in the lab: <b>inconclusive is not the same as "no change"</b>. '
-            f'Rainfall may well be changing; this record is simply too short and too noisy to prove it either way.</p></div>',
-            unsafe_allow_html=True,
-        )
-        prediction_feedback(pred, opts, correct)
-        st.markdown('<div class="caveat"><b>Limits:</b> four cells were screened without multiple-testing correction; NASA POWER precipitation '
-                    'is a corrected reanalysis product (PRECTOTCORR), not rain-gauge totals.</div>', unsafe_allow_html=True)
-        pick = st.selectbox('Evidence Passport for', cities, index=2, key='case3_pdf_city')
-        lat, lon = LOCATIONS[pick]
-        pdf = build_scientific_evidence_brief_pdf(
-            question=f'Can we establish an annual rainfall trend in {pick}?', parameter='PRECTOTCORR', start=START, end=END,
-            loc_a=pick, lat_a=lat, lon_a=lon, data_a=load_snapshot(pick), single_site=sites[pick], interval_mode='cautious')
-        evidence_footer('case3', pdf, f'earthpulse_case003_{pick}_PRECTOTCORR_{START}_{END}.pdf')
-        st.markdown('</div>', unsafe_allow_html=True)
-
-st.markdown(
-    '<div class="foot">Data: NASA POWER Monthly &amp; Annual API (MERRA-2 meteorology; T2M, PRECTOTCORR), bundled unaltered with SHA-256 '
-    'checksums in every Evidence Passport. Method: day-weighted annual means, OLS trend, Newey–West HAC and a cautious '
-    'max(SE_OLS, SE_HAC) interval; at least 30 consecutive complete years required. Exploratory analysis; not affiliated with or endorsed by NASA.</div>',
-    unsafe_allow_html=True,
-)
+nav_c1, nav_c2, nav_c3, nav_c4 = st.columns([1.5, 1.0, 1.0, 0.9])
+with nav_c1:
+    st.download_button(
+        label='Download Evidence Passport (1-Page PDF with Chart & SHA-256)',
+        data=pdf_bytes,
+        file_name=f"EarthPulse_Evidence_Passport_{pdf_loc_a}_{pdf_param}.pdf",
+        mime='application/pdf',
+        use_container_width=True,
+    )
+with nav_c2:
+    st.page_link('discover.py', label='Discovery & Seasonal Fingerprints →', icon='🛰️')
+with nav_c3:
+    st.page_link('expert_en.py', label='Full Expert Analysis Lab →', icon='🔬')
+with nav_c4:
+    st.page_link('expert_ar.py', label='الواجهة العربية →', icon='🌐')

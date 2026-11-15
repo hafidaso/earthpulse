@@ -2336,6 +2336,11 @@ st.markdown(
     '</div>',
     unsafe_allow_html=True,
 )
+_exp_nav1, _exp_nav2 = st.columns(2)
+with _exp_nav1:
+    st.page_link('lab.py', label='← Back to 3D Earth Investigation Studio', icon='🧭')
+with _exp_nav2:
+    st.page_link('discover.py', label='Explore 6 NASA Variables & Seasonal Fingerprints →', icon='🛰️')
 
 nav_choice = st.radio(
     'Investigation mode',

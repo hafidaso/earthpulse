@@ -6,7 +6,8 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen import canvas
 from analysis import (
-    VARIABLES,
+    ALL_VARIABLES,
+    excludes_zero,
     extract_grid_metadata,
     format_bound,
     format_interval,
@@ -113,6 +114,133 @@ def _box(c, x, y, w, h, fill=PAPER, stroke=BORDER, accent=None):
         c.rect(x, y, 4, h, fill=1, stroke=0)
 
 
+def _draw_vector_sparkline(c, x, y, w, h, series_list, title, unit=''):
+    """Draw a compact, crisp ReportLab vector time-series & fitted trend sparkline inside box (x, y, w, h)."""
+    _box(c, x, y, w, h, fill=PAPER, stroke=BORDER)
+    c.setFillColor(INK)
+    c.setFont('Helvetica-Bold', 6.8)
+    c.drawString(x + 6, y + h - 10, title)
+
+    valid = [(label, frame, fit_arr, col) for (label, frame, fit_arr, col) in series_list if frame is not None and len(frame) > 1]
+    if not valid:
+        c.setFillColor(MUTED)
+        c.setFont('Helvetica-Oblique', 6.5)
+        c.drawString(x + 6, y + h / 2 - 3, 'Insufficient annual points to plot.')
+        return
+
+    px0, px1 = x + 28, x + w - 8
+    py0, py1 = y + 12, y + h - 16
+    all_x = [yr for _, fr, _, _ in valid for yr in fr['year'].tolist()]
+    all_y = [v for _, fr, _, _ in valid for v in fr['value'].tolist()]
+    if any(0 <= 0 for _ in [1]) and len(valid) == 1 and 'D =' in title:
+        all_y.append(0.0)
+    xmin, xmax = min(all_x), max(all_x)
+    ymin, ymax = min(all_y), max(all_y)
+    if ymax <= ymin:
+        ymax = ymin + 1.0
+    pad = (ymax - ymin) * 0.12
+    ymin -= pad
+    ymax += pad
+
+    def map_x(xv):
+        return px0 + (xv - xmin) / max(1, xmax - xmin) * (px1 - px0)
+
+    def map_y(yv):
+        return py0 + (yv - ymin) / (ymax - ymin) * (py1 - py0)
+
+    # Zero reference line when spanning zero
+    if ymin <= 0.0 <= ymax:
+        zy = map_y(0.0)
+        c.setStrokeColor(colors.HexColor('#8d99a6'))
+        c.setLineWidth(0.6)
+        c.setDash(2, 2)
+        c.line(px0, zy, px1, zy)
+        c.setDash()
+
+    # Y range ticks
+    c.setFillColor(MUTED)
+    c.setFont('Helvetica', 5.6)
+    c.drawRightString(px0 - 3, py1 - 4, f'{ymax:.1f}')
+    c.drawRightString(px0 - 3, py0, f'{ymin:.1f}')
+    c.drawString(px0, y + 3, str(xmin))
+    c.drawRightString(px1, y + 3, str(xmax))
+
+    # Plot each series
+    for _, frame, fit_arr, col in valid:
+        xs = frame['year'].tolist()
+        ys = frame['value'].tolist()
+        c.setStrokeColor(col)
+        c.setLineWidth(0.95)
+        p = c.beginPath()
+        p.moveTo(map_x(xs[0]), map_y(ys[0]))
+        for xv, yv in zip(xs[1:], ys[1:]):
+            p.lineTo(map_x(xv), map_y(yv))
+        c.drawPath(p, stroke=1, fill=0)
+        if fit_arr is not None and len(fit_arr) == len(xs):
+            c.setLineWidth(1.1)
+            c.setDash(3, 2)
+            fp = c.beginPath()
+            fp.moveTo(map_x(xs[0]), map_y(float(fit_arr[0])))
+            fp.lineTo(map_x(xs[-1]), map_y(float(fit_arr[-1])))
+            c.drawPath(fp, stroke=1, fill=0)
+            c.setDash()
+
+
+def _draw_vector_whiskers(c, x, y, w, h, items, title, rate_unit=''):
+    """Draw a compact ReportLab vector dot-and-whisker 95% CI plot against a vertical 0 reference line."""
+    _box(c, x, y, w, h, fill=PAPER, stroke=BORDER)
+    c.setFillColor(INK)
+    c.setFont('Helvetica-Bold', 6.8)
+    c.drawString(x + 6, y + h - 10, title)
+    if not items:
+        c.setFillColor(MUTED)
+        c.setFont('Helvetica-Oblique', 6.5)
+        c.drawString(x + 6, y + h / 2 - 3, 'No intervals to display.')
+        return
+
+    px0, px1 = x + 56, x + w - 10
+    py_top = y + h - 18
+    py_bot = y + 12
+    vals = [0.0]
+    for _, est, lo, hi, _ in items:
+        vals.extend([est, lo, hi])
+    vmin, vmax = min(vals), max(vals)
+    if vmax <= vmin:
+        vmax = vmin + 0.1
+    pad = (vmax - vmin) * 0.14
+    vmin -= pad
+    vmax += pad
+
+    def mx(v):
+        return px0 + (v - vmin) / (vmax - vmin) * (px1 - px0)
+
+    zx = mx(0.0)
+    c.setStrokeColor(colors.HexColor('#6c757d'))
+    c.setLineWidth(0.8)
+    c.setDash(2, 2)
+    c.line(zx, py_bot, zx, py_top + 2)
+    c.setDash()
+    c.setFillColor(MUTED)
+    c.setFont('Helvetica', 5.6)
+    c.drawCentredString(zx, y + 3, '0')
+    c.drawString(px0, y + 3, f'{vmin:+.2f}')
+    c.drawRightString(px1, y + 3, f'{vmax:+.2f}')
+
+    step = (py_top - py_bot) / max(1, len(items))
+    for idx, (lbl, est, lo, hi, col) in enumerate(items):
+        cy = py_top - (idx + 0.5) * step
+        c.setFillColor(INK)
+        c.setFont('Helvetica-Bold', 6.0)
+        c.drawString(x + 6, cy - 2, lbl[:11])
+        c.setStrokeColor(col)
+        c.setLineWidth(1.5)
+        c.line(mx(lo), cy, mx(hi), cy)
+        c.line(mx(lo), cy - 2.2, mx(lo), cy + 2.2)
+        c.line(mx(hi), cy - 2.2, mx(hi), cy + 2.2)
+        c.setFillColor(col)
+        c.circle(mx(est), cy, 2.5, fill=1, stroke=0)
+
+
 def build_scientific_evidence_brief_pdf(
     question,
     parameter,
@@ -129,6 +257,7 @@ def build_scientific_evidence_brief_pdf(
     trial=None,
     comp=None,
     single_site=None,
+    seasonal=None,
     interval_mode='cautious',
     generated_utc=None,
 ):
@@ -139,7 +268,7 @@ def build_scientific_evidence_brief_pdf(
     c.setAuthor('Hafida Belayd · EarthPulse Labs, Casablanca')
 
     ts_utc = generated_utc or datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-    var_name, unit = VARIABLES[parameter]
+    var_name, unit = ALL_VARIABLES[parameter]
     rate_unit = f"{unit}/dec"
     mode_labels = {
         'cautious': 'Cautious max(SE_OLS, SE_HAC)',
@@ -243,11 +372,18 @@ def build_scientific_evidence_brief_pdf(
         table_rows.append((f"A: {loc_a}", sa['n_complete'], _se_summary_fields(sa.get('result'), unit, rate_unit), sa.get('active_status', 'Ineligible')))
         if loc_b:
             table_rows.append((f"B: {loc_b}", sb['n_complete'], _se_summary_fields(sb.get('result'), unit, rate_unit), sb.get('active_status', 'Ineligible')))
+    elif seasonal is not None:
+        for scode in ('DJF', 'MAM', 'JJA', 'SON'):
+            sres = seasonal.get('seasons', {}).get(scode, {})
+            if sres.get('eligible'):
+                table_rows.append((f"{scode}", sres['n'], _se_summary_fields(sres, unit, rate_unit), sres.get('status_label', 'Eligible')))
+            else:
+                table_rows.append((f"{scode}", len(sres.get('frame', [])), None, sres.get('status_label', 'Withheld')))
     elif single_site is not None:
         table_rows.append((f"{loc_a}", single_site['n_complete'], _se_summary_fields(single_site.get('result'), unit, rate_unit), single_site.get('active_status', 'Ineligible')))
 
     hdr_h = 18
-    row_h = 31
+    row_h = 27 if len(table_rows) >= 4 else 31
     tbl_h = hdr_h + len(table_rows) * row_h
     _box(c, MARGIN, y - tbl_h, CONTENT_W, tbl_h, fill=PAPER, stroke=BORDER)
     c.setFillColor(CARD)
@@ -319,6 +455,14 @@ def build_scientific_evidence_brief_pdf(
         v_head = comp['headline']
         v_body = f"{comp['second_line']} {comp['overlap_note']}"
         v_accent = TEAL
+    elif seasonal is not None:
+        v_head = f"Seasonal Fingerprints — {loc_a} ({var_name}, {start}–{end})"
+        sig_s = [k for k, v in seasonal.get('seasons', {}).items() if v.get('eligible') and v.get('excludes_zero')]
+        v_body = (
+            f"Seasons excluding zero ({interval_mode}): {', '.join(sig_s) if sig_s else 'none'}. "
+            f"{seasonal.get('djf_boundary_note', '')} {seasonal.get('multiplicity_caveat', '')}"
+        )
+        v_accent = OCHRE if sig_s else TEAL
     elif single_site is not None:
         v_head = single_site['active_status']
         if single_site['eligible']:
@@ -335,13 +479,104 @@ def build_scientific_evidence_brief_pdf(
         v_body = 'No computed analysis object provided.'
         v_accent = MUTED
 
-    vbox_h = 80
+    vbox_h = 74
     _box(c, MARGIN, y - vbox_h, CONTENT_W, vbox_h, fill=CARD, stroke=BORDER, accent=v_accent)
     c.setFillColor(INK)
-    c.setFont('Times-Bold', 10.2)
-    c.drawString(MARGIN + 10, y - 14, _wrap_px(v_head, CONTENT_W - 20, 'Times-Bold', 10.2)[0])
-    _draw_wrapped_px(c, v_body, MARGIN + 10, y - 27, CONTENT_W - 20, leading=9.3, font='Helvetica', size=7.2, color=INK, max_lines=5)
-    y -= (vbox_h + 12)
+    c.setFont('Times-Bold', 10.0)
+    c.drawString(MARGIN + 10, y - 13, _wrap_px(v_head, CONTENT_W - 20, 'Times-Bold', 10.0)[0])
+    _draw_wrapped_px(c, v_body, MARGIN + 10, y - 24, CONTENT_W - 20, leading=8.4, font='Helvetica', size=6.9, color=INK, max_lines=5)
+    y -= (vbox_h + 6)
+
+    # Embedded crisp vector evidence chart row (still inside Section 3)
+    chart_h = 70
+    if seasonal is not None and seasonal.get('seasons'):
+        s_items = []
+        for scode in ('DJF', 'MAM', 'JJA', 'SON'):
+            sdata = seasonal['seasons'].get(scode, {})
+            if sdata.get('eligible'):
+                lo, hi = sdata['active_ci']
+                col = OCHRE if (sdata.get('excludes_zero') and sdata['slope_decade'] > 0) else (TEAL if sdata.get('excludes_zero') else MUTED)
+                s_items.append((f"{scode} (n={sdata['n']})", sdata['slope_decade'], lo, hi, col))
+        ann_site = seasonal.get('annual') or {}
+        if ann_site.get('eligible'):
+            ar = ann_site['result']
+            alo, ahi = ann_site['active_ci']
+            s_items.append((f"Ann (n={ar['n']})", ar['slope_decade'], alo, ahi, INK))
+        _draw_vector_whiskers(
+            c,
+            MARGIN,
+            y - chart_h,
+            CONTENT_W,
+            chart_h,
+            s_items,
+            f"Seasonal vs Annual Slope Fingerprints for {loc_a} ({rate_unit}, Exploratory)",
+            rate_unit,
+        )
+    elif trial is not None and trial.get('eligible'):
+        dr = trial['diff_result']
+        left_w = CONTENT_W * 0.54
+        right_w = CONTENT_W - left_w - 8
+        _draw_vector_sparkline(
+            c,
+            MARGIN,
+            y - chart_h,
+            left_w,
+            chart_h,
+            [(f'D = {loc_b} - {loc_a}', trial['diff_frame'], dr['fitted'], OCHRE)],
+            f"Paired Annual Difference D = {loc_b} - {loc_a} ({unit})",
+            unit,
+        )
+        w_items = [
+            ('Cautious', dr['slope_decade'], dr['ci95'][0], dr['ci95'][1], OCHRE if excludes_zero(dr['ci95']) else MUTED),
+            ('Raw HAC', dr['slope_decade'], dr['hac_ci95'][0], dr['hac_ci95'][1], TEAL if excludes_zero(dr['hac_ci95']) else MUTED),
+            ('Conv. OLS', dr['slope_decade'], dr['iid_ci95'][0], dr['iid_ci95'][1], INK),
+        ]
+        _draw_vector_whiskers(
+            c,
+            MARGIN + left_w + 8,
+            y - chart_h,
+            right_w,
+            chart_h,
+            w_items,
+            f"Difference 95% CI vs Zero ({rate_unit})",
+            rate_unit,
+        )
+    else:
+        left_w = CONTENT_W * 0.54
+        right_w = CONTENT_W - left_w - 8
+        series_plot = []
+        w_items = []
+        src_a = comp['site_a'] if comp is not None else single_site
+        if src_a and src_a.get('eligible'):
+            ra = src_a['result']
+            series_plot.append((loc_a, src_a['frame'], ra['fitted'], TEAL))
+            w_items.append((loc_a, ra['slope_decade'], src_a['active_ci'][0], src_a['active_ci'][1], TEAL))
+        src_b = comp['site_b'] if comp is not None else None
+        if loc_b and src_b and src_b.get('eligible'):
+            rb = src_b['result']
+            series_plot.append((loc_b, src_b['frame'], rb['fitted'], OCHRE))
+            w_items.append((loc_b, rb['slope_decade'], src_b['active_ci'][0], src_b['active_ci'][1], OCHRE))
+        _draw_vector_sparkline(
+            c,
+            MARGIN,
+            y - chart_h,
+            left_w,
+            chart_h,
+            series_plot,
+            f"Annual NASA POWER Series & Linear Fit ({unit})",
+            unit,
+        )
+        _draw_vector_whiskers(
+            c,
+            MARGIN + left_w + 8,
+            y - chart_h,
+            right_w,
+            chart_h,
+            w_items,
+            f"Site 95% Slope Intervals vs Zero ({rate_unit})",
+            rate_unit,
+        )
+    y -= (chart_h + 10)
 
     # Section 4: Methodology & Limitations (2 Columns)
     c.setFillColor(TEAL)
@@ -350,7 +585,7 @@ def build_scientific_evidence_brief_pdf(
     y -= 6
 
     col_w = (CONTENT_W - 10) / 2
-    ml_h = 122
+    ml_h = 98
     _box(c, MARGIN, y - ml_h, col_w, ml_h, fill=PAPER, stroke=BORDER)
     _box(c, MARGIN + col_w + 10, y - ml_h, col_w, ml_h, fill=PAPER, stroke=BORDER)
 
@@ -363,7 +598,7 @@ def build_scientific_evidence_brief_pdf(
         '3) Enforce >=30 consecutive complete years without interpolation; pair D(year) = B - A strictly on shared complete years. '
         '4) Fit OLS on centered year; compute Newey–West HAC (Bartlett kernel, finite-sample t, L = floor(4*(n/100)^(2/9)) lags); apply cautious max(SE_OLS, SE_HAC) safeguard alongside raw HAC and OLS.'
     )
-    _draw_wrapped_px(c, meth_text, MARGIN + 8, y - 24, col_w - 16, leading=9.1, font='Helvetica', size=6.9, color=MUTED, max_lines=10)
+    _draw_wrapped_px(c, meth_text, MARGIN + 8, y - 23, col_w - 16, leading=8.0, font='Helvetica', size=6.5, color=MUTED, max_lines=9)
 
     c.setFillColor(INK)
     c.setFont('Helvetica-Bold', 7.8)
@@ -373,7 +608,7 @@ def build_scientific_evidence_brief_pdf(
         '• Small-Sample Inference: With n = 30–35 years, HAC variance estimates carry sampling noise; overlapping intervals never test B - A differences; inconclusive intervals mean zero is not excluded, NOT equal trends. '
         '• Multiplicity & Causation: Exploratory comparisons are unadjusted; linear slopes do not prove physical causation.'
     )
-    _draw_wrapped_px(c, lim_text, MARGIN + col_w + 18, y - 24, col_w - 16, leading=9.1, font='Helvetica', size=6.9, color=MUTED, max_lines=10)
+    _draw_wrapped_px(c, lim_text, MARGIN + col_w + 18, y - 23, col_w - 16, leading=8.0, font='Helvetica', size=6.5, color=MUTED, max_lines=9)
 
     y -= (ml_h + 12)
 

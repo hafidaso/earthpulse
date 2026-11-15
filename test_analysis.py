@@ -518,8 +518,8 @@ def test_unified_versionless_hygiene_and_arabic_ui():
     root = Path(__file__).parent
     version_pat = re.compile(r'\b[vV][23]\b(?!\.\d)|EarthPulse\s*[Vv][23]')
 
-    # app.py, lab.py, expert_en.py, expert_ar.py: valid Python syntax and zero V2/V3 branding
-    for fname in ('app.py', 'lab.py', 'expert_en.py', 'expert_ar.py'):
+    # app.py, lab.py, discover.py, expert_en.py, expert_ar.py, earth_3d.py, studio_ui.py: valid Python syntax and zero V2/V3 branding
+    for fname in ('app.py', 'lab.py', 'discover.py', 'expert_en.py', 'expert_ar.py', 'earth_3d.py', 'studio_ui.py'):
         src = (root / fname).read_text(encoding='utf-8')
         ast.parse(src)
         assert not version_pat.findall(src), f'Legacy version labels in {fname}: {version_pat.findall(src)}'
@@ -556,3 +556,119 @@ def test_unified_versionless_hygiene_and_arabic_ui():
     # No obsolete V2/V3 screenshot artifacts left behind
     legacy_shots = list((root / 'screenshots').glob('earthpulse_v[23]_*.png'))
     assert not legacy_shots, f'Obsolete versioned screenshots still present: {legacy_shots}'
+
+
+def test_discovery_variables_units_and_bounds():
+    import copy
+    import analysis
+
+    for param in ('T2M_MAX', 'T2M_MIN', 'RH2M', 'WS2M'):
+        d = analysis.load_city_dataset('Casablanca', param)
+        df, omitted = analysis.annual_series(d, param, 1991, 2025)
+        assert len(df) == 35 and omitted == []
+        site = analysis.evaluate_site('Casablanca', d, param, 1991, 2025)
+        assert site['eligible'] is True
+        sha = analysis.source_sha256('Casablanca', d)
+        assert sha['scope'].startswith('Unaltered bundled snapshot')
+
+    # Domain violation (RH2M > 100 and WS2M < 0) must cleanly omit affected years
+    bad_rh = copy.deepcopy(analysis.load_city_dataset('Casablanca', 'RH2M'))
+    bad_rh['properties']['parameter']['RH2M']['200507'] = 104.0
+    _, omitted_rh = analysis.annual_series(bad_rh, 'RH2M', 1991, 2025)
+    assert omitted_rh == [2005]
+
+    bad_ws = copy.deepcopy(analysis.load_city_dataset('Casablanca', 'WS2M'))
+    bad_ws['properties']['parameter']['WS2M']['201001'] = -0.5
+    _, omitted_ws = analysis.annual_series(bad_ws, 'WS2M', 1991, 2025)
+    assert omitted_ws == [2010]
+
+
+def test_seasonal_djf_cross_year_and_fingerprints():
+    import calendar
+    import copy
+    import analysis
+
+    data_casa = analysis.load_city_dataset('Casablanca', 'T2M')
+    djf_df, djf_omitted = analysis.seasonal_series(data_casa, 'T2M', 'DJF', 1991, 2025)
+    # 1991 DJF requires Dec 1990 which is outside 1991..2025 -> omitted honestly
+    assert djf_omitted == [1991]
+    assert len(djf_df) == 34 and int(djf_df['year'].iloc[0]) == 1992
+
+    # Verify exact day-weighted cross-year winter calculation for 2020 (leap Feb = 29 days)
+    raw = data_casa['properties']['parameter']['T2M']
+    exp_2020 = (
+        raw['201912'] * 31
+        + raw['202001'] * 31
+        + raw['202002'] * calendar.monthrange(2020, 2)[1]
+    ) / (31 + 31 + 29)
+    obs_2020 = float(djf_df.loc[djf_df['year'] == 2020, 'value'].iloc[0])
+    assert obs_2020 == pytest.approx(exp_2020, abs=1e-9)
+
+    # Incomplete DJF (missing Dec 1999) omits year 2000 and splits consecutive span cleanly
+    broken = copy.deepcopy(data_casa)
+    broken['properties']['parameter']['T2M']['199912'] = broken['header']['fill_value']
+    _, b_omitted = analysis.seasonal_series(broken, 'T2M', 'DJF', 1991, 2025)
+    assert b_omitted == [1991, 2000]
+
+    # Seasonal Fingerprints: 4 seasons + caveat + SON signal detected in Casablanca T2M
+    sf = analysis.seasonal_fingerprints('Casablanca', data_casa, 'T2M', 1991, 2025)
+    assert set(sf['seasons'].keys()) == {'DJF', 'MAM', 'JJA', 'SON'}
+    assert 'multiple-comparison' in sf['multiplicity_caveat'].lower()
+    assert sf['seasons']['SON']['eligible'] is True
+    assert sf['seasons']['SON']['excludes_zero'] is True
+    assert sf['seasons']['SON']['slope_decade'] > 0
+
+    # Seasonal precipitation sums daily rates * month days
+    rain_marr = analysis.load_city_dataset('Marrakech', 'PRECTOTCORR')
+    jja_df, jja_omitted = analysis.seasonal_series(rain_marr, 'PRECTOTCORR', 'JJA', 1991, 2025)
+    assert jja_omitted == [] and len(jja_df) == 35
+    r_raw = rain_marr['properties']['parameter']['PRECTOTCORR']
+    exp_jja_2005 = r_raw['200506'] * 30 + r_raw['200507'] * 31 + r_raw['200508'] * 31
+    assert float(jja_df.loc[jja_df['year'] == 2005, 'value'].iloc[0]) == pytest.approx(exp_jja_2005, abs=1e-9)
+
+
+def test_morocco_dem_and_3d_fallback():
+    import earth_3d
+
+    dem = earth_3d.load_morocco_dem()
+    assert dem is not None
+    assert earth_3d.load_morocco_dem('/nonexistent/missing_dem.json') is None
+    atlantic = earth_3d.sample_dem_elevation(dem, 33.6, -10.5)
+    casa = earth_3d.sample_dem_elevation(dem, 33.5731, -7.5898)
+    marr = earth_3d.sample_dem_elevation(dem, 31.6295, -7.9811)
+    assert atlantic is not None and atlantic < 0.0
+    assert casa is not None and 0.0 <= casa <= 120.0
+    assert marr is not None and 300.0 <= marr <= 650.0
+
+    stations = earth_3d.build_station_payload('T2M', 1991, 2025)
+    assert len(stations) == 4
+    fig_with_dem = earth_3d.build_2d_fallback_figure(dem, stations)
+    fig_without_dem = earth_3d.build_2d_fallback_figure(None, stations)
+    assert len(fig_with_dem.data) > len(fig_without_dem.data)
+    assert len(fig_without_dem.data) == 8  # 4 MERRA-2 grid boxes + 4 station markers
+
+
+def test_evidence_passport_v4_with_vector_chart_and_seasonal_brief():
+    import analysis
+    import brief_pdf
+    import fitz
+
+    da = analysis.load_city_dataset('Casablanca', 'T2M')
+    sf = analysis.seasonal_fingerprints('Casablanca', da, 'T2M', 1991, 2025)
+    seas_pdf = brief_pdf.build_scientific_evidence_brief_pdf(
+        question='Seasonal Fingerprints for Casablanca (T2M)',
+        parameter='T2M',
+        start=1991,
+        end=2025,
+        loc_a='Casablanca',
+        lat_a=analysis.LOCATIONS['Casablanca'][0],
+        lon_a=analysis.LOCATIONS['Casablanca'][1],
+        data_a=da,
+        seasonal=sf,
+    )
+    doc = fitz.open(stream=seas_pdf, filetype='pdf')
+    assert doc.page_count == 1
+    txt = doc[0].get_text()
+    assert 'Seasonal vs Annual Slope Fingerprints' in txt
+    assert 'SON' in txt and 'DJF' in txt
+
