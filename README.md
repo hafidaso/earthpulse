@@ -2,6 +2,8 @@
 
 Hafida Belayd, EarthPulse Labs, Casablanca. An independent 2026 NASA Space Apps project for “Be An Earth System Trend Detective!”
 
+[Open the live EarthPulse dashboard](https://earthpulse-labs-hafidaso.streamlit.app/) · [Seven-slide demo](EarthPulse-Demo.pdf)
+
 Run with Python 3.11:
 ```sh
 python -m pip install -r requirements.txt
