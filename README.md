@@ -1,13 +1,54 @@
-# EarthPulse — The Climate Trend Detective (V2)
+# EarthPulse V3 — The Climate Trial
 
 **Hafida Belayd · EarthPulse Labs, Casablanca**  
 An independent 2026 NASA Space Apps project for *“Be An Earth System Trend Detective!”*
 
-[Open the live EarthPulse dashboard](https://earthpulse-labs-hafidaso.streamlit.app/) · [Seven-slide demo (`EarthPulse-Demo.pdf`)](EarthPulse-Demo.pdf)
+> **Tagline**: *Put climate claims on trial.*
+
+[Open the live EarthPulse dashboard](https://earthpulse-labs-hafidaso.streamlit.app/) · [Eight-slide demo (`EarthPulse-Demo.pdf`)](EarthPulse-Demo.pdf)
+
+![EarthPulse V3 — The Climate Trial (Casablanca vs. Marrakech T2M, 1991–2025)](screenshots/earthpulse_v3_climate_trial.png)
+
+---
+
+## What’s New in V3: *The Climate Trial*
+
+V2 established why separate site confidence intervals can flip when residual time dependence is accounted for—leaving open a harder question: **overlapping single-site confidence intervals never test whether two trends actually differ from each other.**
+
+**EarthPulse V3 (*The Climate Trial*)** adds an exploratory paired hypothesis test directly on the opening screen while preserving **Compare: The Trend Verdict (V2)** and **Single Location & Custom Coordinates** intact as switchable modes.
+
+### 1. Climate Face-Off (`D(year) = Variable_B(year) − Variable_A(year)`)
+- **Opening Trial Question**: *“Is Marrakech warming faster than Casablanca?”* — **“Are the two trends significantly different from each other?”**
+- **Exact Year Alignment**: Aligns complete annual NASA POWER observations strictly by calendar year (`inner join` on completed years; incomplete/missing years drop cleanly from pairs without interpolation).
+- **Direct Paired Estimation**: Estimates the linear slope per decade of `D(year)` (`°C/decade` or `mm/year/decade`), verifies the exact OLS identity (`slope(B − A) == slope(B) − slope(A)` over identical years), and applies Newey–West HAC vs. conventional OLS uncertainty intervals.
+- **Derived Verdicts (Never Hard-Coded)**:
+  - **Evidence of a positive trend difference**: e.g., **Marrakech − Casablanca (`T2M`, 1991–2025)** yields **`+0.26306 °C/decade`**, cautious 95% CI **`[+0.14397, +0.38215] °C/decade`**, exploratory `p = 8.12e-05`. Even though solo intervals overlap (`[-0.03, +0.46]` vs. `[+0.23, +0.73]`), year-by-year pairing removes shared regional fluctuations (`r = +0.83`, paired residual `ρ₁ = +0.03`).
+  - **Evidence of a negative trend difference**: e.g., **Casablanca − Marrakech (`T2M`, 1991–2025)** yields **`-0.26306 °C/decade`**, cautious 95% CI **`[-0.38215, -0.14397] °C/decade`**, `p = 8.12e-05`.
+  - **Inconclusive result**: e.g., **Rabat − Casablanca (`T2M`, 1991–2025)** yields **`+0.02098 °C/decade`**, cautious 95% CI **`[-0.01141, +0.05338] °C/decade`**, `p = 0.1966` (crosses zero), and **Marrakech − Casablanca (`PRECTOTCORR`)** yields **`-28.74720 mm/yr/decade`**, **`[-72.24153, +14.74714]`**, `p = 0.1879`. Inconclusive results explicitly state that crossing zero **does NOT establish equal trends**.
+
+### 2. Animated Transformation & Challenge the Verdict Panel
+- **Central `TEST THE DIFFERENCE` Action & Plotly Morph**: Reveals the paired verdict card and animates smoothly between centered original trajectories (`A − Ā`, `B − B̄`) and the paired annual difference series `D(year) = B − A` alongside a zero-line verdict whisker plot.
+- **Challenge the Verdict (Exploratory Sensitivity Panel)**: Adjust the analysis period (`1981–2025`, enforcing the 30-consecutive-complete-years rule), toggle between cautious Newey–West HAC and conventional OLS intervals, run preset claims, verify the OLS difference identity, and inspect all year-to-year `D(year)` values.
+- **Evidence Passport**: Download a reproducible **Evidence Passport (`.md`)**, **Paired Series (`.csv`)**, or **Trial Provenance (`.json`)** containing chosen locations, exact NASA POWER API request URLs, analysis dates, slope difference, uncertainty intervals, and methodology guardrails.
+
+---
+
+## Verified V3 Paired Trial Results (`1991–2025`, `n = 35` Paired Years)
+
+| Claim (`D = B − A`) | Variable | Slope Diff / Dec | Cautious 95% CI (HAC) | Paired `p` | Paired `ρ₁` | Derived Exploratory Verdict |
+| :--- | :--- | :---: | :---: | :---: | :---: | :--- |
+| **Marrakech − Casablanca** | `T2M` (°C) | `+0.26306` | **`[+0.14397, +0.38215]`** | `8.12e-05` | `+0.03` | Evidence of a positive trend difference |
+| **Casablanca − Marrakech** | `T2M` (°C) | `-0.26306` | **`[-0.38215, -0.14397]`** | `8.12e-05` | `+0.03` | Evidence of a negative trend difference |
+| **Ouarzazate − Casablanca** | `T2M` (°C) | `+0.27630` | **`[+0.12860, +0.42400]`** | `0.00058` | `+0.06` | Evidence of a positive trend difference |
+| **Rabat − Casablanca** | `T2M` (°C) | `+0.02098` | **`[-0.01141, +0.05338]`** | `0.1966` | `+0.39` | Inconclusive result (NOT equal trends) |
+| **Ouarzazate − Marrakech** | `T2M` (°C) | `+0.01323` | **`[-0.08291, +0.10938]`** | `0.7812` | `-0.21` | Inconclusive result (NOT equal trends) |
+| **Marrakech − Casablanca** | `PRECTOTCORR` | `-28.74720` | **`[-72.24153, +14.74714]`** | `0.1879` | `+0.06` | Inconclusive result (NOT equal trends) |
+
+---
 
 ![EarthPulse V2 — The Trend Verdict](screenshots/earthpulse_v2_desktop.png)
 
-*Interactive Spatial Grid Map & HAC Standard Error Inflation Diagnostics:*
+*Interactive Spatial Grid Map & HAC Standard Error Inflation Diagnostics (preserved in V2 mode):*
 
 ![EarthPulse V2 — Morocco Spatial Grid Map & HAC Inflation Factor](screenshots/earthpulse_v2_morocco_map.png)
 

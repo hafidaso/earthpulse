@@ -1,4 +1,4 @@
-"""EarthPulse V2 interface."""
+"""EarthPulse V3 — The Climate Trial & V2 Trend Verdict interface."""
 import json
 from pathlib import Path
 import numpy as np
@@ -9,6 +9,7 @@ from analysis import (
     LOCATIONS,
     VARIABLES,
     annual_series,
+    climate_trial,
     compare_locations,
     evaluate_site,
     excludes_zero,
@@ -19,7 +20,7 @@ from analysis import (
 )
 
 st.set_page_config(
-    page_title='EarthPulse · Climate Trend Detective',
+    page_title='EarthPulse · The Climate Trial',
     page_icon='◉',
     layout='wide',
     initial_sidebar_state='collapsed',
@@ -37,7 +38,7 @@ header[data-testid="stHeader"] {
 }
 .block-container {
     max-width: 1380px;
-    padding-top: 2.6rem !important;
+    padding-top: 3.05rem !important;
     padding-bottom: 2.5rem !important;
 }
 h1, h2, h3, .editorial-headline {
@@ -195,6 +196,233 @@ div[data-testid="stPlotlyChart"] {
     border-radius: 4px;
     margin-top: 0.4rem;
 }
+.trial-tagline {
+    font-size: 0.96rem;
+    color: #15616d;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    margin: 0 0 0.2rem 0;
+}
+.trial-subq {
+    font-size: 1.03rem;
+    color: #243b40;
+    line-height: 1.45;
+    margin: 0 0 0.75rem 0;
+}
+.city-card {
+    background: #faf8f3;
+    border: 1px solid #d6d0c2;
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+    height: 100%;
+}
+.city-card-a {
+    border-top: 4px solid #15616d;
+}
+.city-card-b {
+    border-top: 4px solid #b55327;
+}
+.city-card-kicker {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #485e64;
+    margin-bottom: 0.15rem;
+}
+.city-card-name {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #14282d;
+    margin-bottom: 0.25rem;
+}
+.city-card-rate {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 1.55rem;
+    font-weight: 700;
+    margin: 0.2rem 0 0.3rem 0;
+}
+.city-card-meta {
+    font-size: 0.84rem;
+    color: #334a50;
+    line-height: 1.42;
+}
+.vs-card {
+    background: #ece8de;
+    border: 1px solid #cbc3b2;
+    border-radius: 8px;
+    padding: 0.85rem 0.9rem;
+    text-align: center;
+}
+.vs-pill {
+    display: inline-block;
+    background: #14282d;
+    color: #f5f2eb;
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0.18rem 0.6rem;
+    border-radius: 999px;
+    margin-bottom: 0.35rem;
+}
+.vs-prompt {
+    font-size: 0.85rem;
+    color: #243b40;
+    line-height: 1.38;
+    margin: 0.2rem 0 0.45rem 0;
+}
+.verdict-banner {
+    background: #faf8f3;
+    border: 1px solid #cbc3b2;
+    border-radius: 8px;
+    padding: 0.95rem 1.15rem;
+    margin: 0.55rem 0 0.75rem 0;
+}
+.verdict-positive {
+    border-left: 6px solid #b55327;
+}
+.verdict-negative {
+    border-left: 6px solid #15616d;
+}
+.verdict-inconclusive {
+    border-left: 6px solid #6b7274;
+}
+.verdict-ineligible {
+    border-left: 6px solid #b88b2e;
+}
+.verdict-pill-pos {
+    display: inline-block;
+    background: #f6e3d8;
+    color: #8a350f;
+    border: 1px solid #d99b7e;
+    font-weight: 700;
+    font-size: 0.82rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 0.16rem 0.65rem;
+    border-radius: 4px;
+}
+.verdict-pill-neg {
+    display: inline-block;
+    background: #dcebed;
+    color: #124e57;
+    border: 1px solid #8eb8be;
+    font-weight: 700;
+    font-size: 0.82rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 0.16rem 0.65rem;
+    border-radius: 4px;
+}
+.verdict-pill-inc {
+    display: inline-block;
+    background: #e7e5df;
+    color: #38494c;
+    border: 1px solid #b5b0a4;
+    font-weight: 700;
+    font-size: 0.82rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 0.16rem 0.65rem;
+    border-radius: 4px;
+}
+.verdict-pill-warn {
+    display: inline-block;
+    background: #f5e6c8;
+    color: #6e4b0c;
+    border: 1px solid #d4b475;
+    font-weight: 700;
+    font-size: 0.82rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 0.16rem 0.65rem;
+    border-radius: 4px;
+}
+.trial-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.65rem;
+    margin: 0.6rem 0 0.55rem 0;
+}
+.trial-metric-box {
+    background: #f1eee5;
+    border: 1px solid #d8d1c2;
+    border-radius: 6px;
+    padding: 0.5rem 0.7rem;
+}
+.trial-metric-label {
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #465c62;
+    font-weight: 600;
+}
+.trial-metric-value {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 1.18rem;
+    font-weight: 700;
+    color: #14282d;
+    margin-top: 0.1rem;
+}
+.trial-metric-sub {
+    font-size: 0.76rem;
+    color: #4e6368;
+}
+.table-wrapper {
+    overflow: auto;
+    max-inline-size: 100%;
+    max-block-size: 320px;
+    border: 1px solid #d6d0c2;
+    border-radius: 6px;
+    background: #faf8f3;
+}
+.table-wrapper table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.84rem;
+}
+.table-wrapper thead th {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 2;
+    background: #e4dfd1;
+    color: #14282d;
+    padding: 0.45rem 0.6rem;
+    text-align: right;
+    border-bottom: 1px solid #cbc3b2;
+}
+.table-wrapper thead th:first-child {
+    text-align: left;
+}
+.table-wrapper tbody td {
+    padding: 0.36rem 0.6rem;
+    text-align: right;
+    border-bottom: 1px solid #ebe6da;
+    color: #1e353a;
+    font-variant-numeric: tabular-nums;
+}
+.table-wrapper tbody td:first-child {
+    text-align: left;
+    font-weight: 600;
+}
+@keyframes trialReveal {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+@media (prefers-reduced-motion: no-preference) {
+    .trial-reveal-panel {
+        animation: trialReveal 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+}
 [data-testid="stSidebar"] {
     background-color: #e8e4d8;
 }
@@ -207,6 +435,18 @@ div[data-testid="stPlotlyChart"] {
     background-color: #15616d;
     color: #ffffff;
     border: 0;
+}
+.stButton > button[kind="primary"] {
+    background-color: #b55327;
+    color: #ffffff;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 0.55rem 1.1rem;
+    border-radius: 6px;
+}
+.stButton > button[kind="primary"]:hover {
+    background-color: #96411c;
+    color: #ffffff;
 }
 a {
     color: #15616d;
@@ -222,6 +462,9 @@ a {
     }
     .verdict-lead {
         font-size: 0.94rem;
+    }
+    .trial-metrics-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     .verdict-table {
         font-size: 0.78rem;
@@ -798,6 +1041,623 @@ def build_evidence_brief_markdown(comp, loc_a, lat_a, lon_a, loc_b, lat_b, lon_b
     return "\n".join(lines)
 
 
+def format_trial_question(loc_a, loc_b, parameter):
+    """Return the human-facing headline question for The Climate Trial."""
+    if loc_a == loc_b:
+        return f"Comparing {loc_a} against itself ({VARIABLES[parameter][0]})"
+    if parameter == 'T2M':
+        return f"Is {loc_b} warming faster than {loc_a}?"
+    return f"Is {loc_b} gaining rainfall faster than {loc_a}?"
+
+
+def _padded_axis_range(*arrays):
+    """Compute a padded y-axis range that always includes 0.0."""
+    vals = np.concatenate([np.asarray(a, dtype=float).ravel() for a in arrays] + [np.array([0.0])])
+    lo, hi = float(np.min(vals)), float(np.max(vals))
+    span = max(hi - lo, 0.25)
+    return [lo - 0.16 * span, hi + 0.18 * span]
+
+
+def build_trial_transition_figure(trial):
+    """Build the animated Original-to-Paired-Difference Plotly figure for The Climate Trial."""
+    merged = trial['merged']
+    unit = trial['unit']
+    rate_unit = trial['rate_unit']
+    loc_a = trial['site_a']['location']
+    loc_b = trial['site_b']['location']
+    fig = go.Figure()
+
+    if merged.empty:
+        fig.add_annotation(
+            x=0.5,
+            y=0.5,
+            xref='paper',
+            yref='paper',
+            text='<b>No overlapping complete calendar years available.</b>',
+            showarrow=False,
+            font=dict(size=13, color=INK_COLOR),
+        )
+        fig.update_layout(height=340, template='plotly_white', paper_bgcolor=CHART_BG, plot_bgcolor=CHART_BG)
+        return fig
+
+    years = merged['year'].to_numpy(dtype=int)
+    a_dev = merged['value_a'].to_numpy(dtype=float) - float(merged['value_a'].mean())
+    b_dev = merged['value_b'].to_numpy(dtype=float) - float(merged['value_b'].mean())
+    diff_vals = merged['diff'].to_numpy(dtype=float)
+    zeros = np.zeros_like(diff_vals)
+
+    eligible = trial['eligible']
+    if eligible:
+        fitted_vals = merged['fitted_diff'].to_numpy(dtype=float)
+        dr = trial['diff_result']
+        fit_label = f"Linear fit ({format_bound(dr['slope_decade'])} {rate_unit})"
+        verdict_code = trial['verdict_code']
+        fit_color = (
+            SITE_B_COLOR if verdict_code == 'positive_difference'
+            else SITE_A_COLOR if verdict_code == 'negative_difference'
+            else '#495b5f'
+        )
+    else:
+        fitted_vals = zeros
+        fit_label = 'Linear fit withheld (<30 consecutive paired years)'
+        fit_color = '#9aa5a7'
+
+    y_range_orig = _padded_axis_range(a_dev, b_dev)
+    y_range_mid = _padded_axis_range(0.45 * a_dev, 0.45 * b_dev + 0.55 * diff_vals, 0.55 * diff_vals)
+    y_range_diff = _padded_axis_range(diff_vals, fitted_vals) if eligible else _padded_axis_range(diff_vals)
+
+    # Initial traces start in Final Paired-Difference stage (step2) so metrics are immediately readable
+    fig.add_trace(
+        go.Scatter(
+            x=years,
+            y=zeros,
+            mode='lines+markers',
+            name=f"● {loc_a} anomaly ({unit})",
+            line=dict(color=SITE_A_COLOR, width=2.0, dash='solid'),
+            marker=dict(symbol='circle', size=5.5, color=SITE_A_COLOR),
+            opacity=0.0,
+            showlegend=False,
+            hovertemplate=f"<b>{loc_a} anomaly</b> (%{{x}}): %{{y:+.2f}} {unit}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=years,
+            y=zeros,
+            mode='lines+markers',
+            name=f"◆ {loc_b} anomaly ({unit})",
+            line=dict(color=SITE_B_COLOR, width=2.0, dash='dot'),
+            marker=dict(symbol='diamond', size=6.0, color=SITE_B_COLOR),
+            opacity=0.0,
+            showlegend=False,
+            hovertemplate=f"<b>{loc_b} anomaly</b> (%{{x}}): %{{y:+.2f}} {unit}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=years,
+            y=diff_vals,
+            mode='lines+markers',
+            name=f"D(year) = {loc_b} − {loc_a} ({unit})",
+            line=dict(color=INK_COLOR, width=2.3, dash='solid'),
+            marker=dict(
+                symbol='circle',
+                size=6.5,
+                color=[SITE_B_COLOR if v >= 0 else SITE_A_COLOR for v in diff_vals],
+                line=dict(width=1.0, color='#ffffff'),
+            ),
+            opacity=1.0,
+            hovertemplate=f"<b>D(%{{x}}) = {loc_b} − {loc_a}</b>: %{{y:+.2f}} {unit}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=years,
+            y=fitted_vals,
+            mode='lines',
+            name=fit_label,
+            line=dict(color=fit_color, width=3.4, dash='dash' if verdict_code_or_default(trial) == 'inconclusive' else 'solid'),
+            opacity=1.0 if eligible else 0.0,
+            hovertemplate=f"<b>Fitted D(%{{x}})</b>: %{{y:+.2f}} {unit}<extra></extra>",
+        )
+    )
+
+    fig.add_hline(
+        y=0.0,
+        line_width=1.8,
+        line_dash='dot',
+        line_color='#66767a',
+    )
+    fig.add_annotation(
+        x=0.99,
+        y=0.0,
+        xref='paper',
+        yref='y',
+        xanchor='right',
+        yshift=-11,
+        text='0.0 (No gap)',
+        showarrow=False,
+        font=dict(size=9.8, color='#45575b'),
+        bgcolor='rgba(249,247,242,0.92)',
+    )
+
+    fig.frames = [
+        go.Frame(
+            name='step0',
+            data=[
+                go.Scatter(x=years, y=a_dev, opacity=0.92),
+                go.Scatter(x=years, y=b_dev, opacity=0.92),
+                go.Scatter(x=years, y=zeros, opacity=0.14),
+                go.Scatter(x=years, y=zeros, opacity=0.0),
+            ],
+            layout=go.Layout(
+                yaxis=dict(title=f"Centered {trial['variable_name']} ({unit})", range=y_range_orig),
+            ),
+        ),
+        go.Frame(
+            name='step1',
+            data=[
+                go.Scatter(x=years, y=0.45 * a_dev, opacity=0.45),
+                go.Scatter(x=years, y=0.45 * b_dev + 0.55 * diff_vals, opacity=0.45),
+                go.Scatter(x=years, y=0.55 * diff_vals, opacity=0.72),
+                go.Scatter(x=years, y=0.55 * fitted_vals, opacity=0.55 if eligible else 0.0),
+            ],
+            layout=go.Layout(
+                yaxis=dict(title=f"Pairing Transition ({unit})", range=y_range_mid),
+            ),
+        ),
+        go.Frame(
+            name='step2',
+            data=[
+                go.Scatter(x=years, y=zeros, opacity=0.0),
+                go.Scatter(x=years, y=zeros, opacity=0.0),
+                go.Scatter(x=years, y=diff_vals, opacity=1.0),
+                go.Scatter(x=years, y=fitted_vals, opacity=1.0 if eligible else 0.0),
+            ],
+            layout=go.Layout(
+                yaxis=dict(title=f"Paired Difference D(year) ({unit})", range=y_range_diff),
+            ),
+        ),
+    ]
+
+    fig.update_layout(
+        height=365,
+        template='plotly_white',
+        paper_bgcolor=CHART_BG,
+        plot_bgcolor=CHART_BG,
+        font=dict(family='Arial, sans-serif', color=INK_COLOR, size=12),
+        margin=dict(l=54, r=18, t=58, b=72),
+        legend=dict(
+            orientation='h',
+            yanchor='top',
+            y=-0.27,
+            xanchor='left',
+            x=0.0,
+            font=dict(size=10.8),
+            bgcolor='rgba(249,247,242,0.0)',
+        ),
+        updatemenus=[
+            dict(
+                type='buttons',
+                direction='left',
+                x=0.0,
+                xanchor='left',
+                y=1.18,
+                yanchor='top',
+                bgcolor='#ece8de',
+                bordercolor='#cbc3b2',
+                borderwidth=1,
+                font=dict(size=10.2, color=INK_COLOR),
+                pad=dict(r=4, t=1, b=3),
+                buttons=[
+                    dict(
+                        label='▶ Animate Morph',
+                        method='animate',
+                        args=[
+                            ['step0', 'step1', 'step2'],
+                            {
+                                'frame': {'duration': 900, 'redraw': False},
+                                'transition': {'duration': 650, 'easing': 'cubic-in-out'},
+                                'fromcurrent': False,
+                            },
+                        ],
+                    ),
+                    dict(
+                        label='1. Original A & B',
+                        method='animate',
+                        args=[
+                            ['step0'],
+                            {
+                                'mode': 'immediate',
+                                'frame': {'duration': 500, 'redraw': False},
+                                'transition': {'duration': 450},
+                            },
+                        ],
+                    ),
+                    dict(
+                        label='2. Paired D(year)',
+                        method='animate',
+                        args=[
+                            ['step2'],
+                            {
+                                'mode': 'immediate',
+                                'frame': {'duration': 500, 'redraw': False},
+                                'transition': {'duration': 450},
+                            },
+                        ],
+                    ),
+                ],
+            )
+        ],
+        xaxis=dict(
+            title='Calendar year (aligned pairs)',
+            range=[trial['start'] - 0.6, trial['end'] + 0.6],
+            gridcolor='#e3ded2',
+            zeroline=False,
+        ),
+        yaxis=dict(
+            title=f"Paired Difference D(year) ({unit})",
+            range=y_range_diff,
+            gridcolor='#e3ded2',
+            zeroline=False,
+        ),
+        hovermode='x unified',
+    )
+    return fig
+
+
+def verdict_code_or_default(trial):
+    return trial.get('verdict_code', 'ineligible')
+
+
+def build_trial_verdict_figure(trial, lens_mode):
+    """Build the Zero-Line Confidence Interval plot comparing D(year) = B - A alongside contextual solo intervals."""
+    rate_unit = trial['rate_unit']
+    loc_a = trial['site_a']['location']
+    loc_b = trial['site_b']['location']
+    fig = go.Figure()
+
+    fig.add_vline(x=0.0, line_width=2.5, line_dash='solid', line_color=INK_COLOR)
+
+    if not trial['eligible']:
+        fig.add_annotation(
+            x=0.0,
+            y=0.5,
+            xref='x',
+            yref='paper',
+            text=(
+                "<b>Trial inference withheld</b><br>"
+                "At least 30 consecutive complete paired years (with non-constant D)<br>"
+                "are required for OLS &amp; Newey–West HAC intervals."
+            ),
+            showarrow=False,
+            font=dict(size=12.2, color=INK_COLOR, family='Georgia, serif'),
+            bgcolor='#f5e6c8',
+            bordercolor='#d4b475',
+            borderwidth=1,
+            borderpad=10,
+        )
+        fig.update_layout(
+            height=355,
+            template='plotly_white',
+            paper_bgcolor=CHART_BG,
+            plot_bgcolor=CHART_BG,
+            margin=dict(l=20, r=20, t=54, b=40),
+            xaxis=dict(title=f"Slope difference ({rate_unit})", range=[-1, 1], gridcolor='#e3ded2'),
+            yaxis=dict(visible=False),
+        )
+        return fig
+
+    dr = trial['diff_result']
+    ra = trial['aligned_site_a_result']
+    rb = trial['aligned_site_b_result']
+    slope_d = dr['slope_decade']
+
+    show_cautious = lens_mode in ('both', 'cautious')
+    show_iid = lens_mode in ('both', 'conventional')
+
+    verdict_color = (
+        SITE_B_COLOR if trial['verdict_code'] == 'positive_difference'
+        else SITE_A_COLOR if trial['verdict_code'] == 'negative_difference'
+        else '#46585c'
+    )
+
+    all_bounds = [0.0, *dr['ci95'], *dr['iid_ci95']]
+    if ra is not None:
+        all_bounds.extend(ra['ci95'])
+    if rb is not None:
+        all_bounds.extend(rb['ci95'])
+
+    span = max(all_bounds) - min(all_bounds)
+    x_min = min(all_bounds) - max(span * 0.34, 0.14)
+    x_max = max(all_bounds) + max(span * 0.50, 0.28)
+    x_mid = 0.5 * (x_min + x_max)
+
+    fig.add_annotation(
+        x=0.0,
+        y=1.18,
+        xref='x',
+        yref='y',
+        text='<b>0.0 (No diff)</b>',
+        showarrow=False,
+        font=dict(size=10.4, color=INK_COLOR),
+        bgcolor='#e5e0d3',
+        bordercolor='#b8b09c',
+        borderwidth=1,
+        borderpad=3,
+    )
+
+    # Primary Track: Paired Difference D(year) = B - A
+    y_d_base = 1.75
+    fig.add_trace(
+        go.Scatter(
+            x=[slope_d],
+            y=[y_d_base + (0.09 if lens_mode == 'both' else 0.0)],
+            mode='markers',
+            name='Cautious 95% CI (HAC)',
+            opacity=1.0 if show_cautious else 0.25,
+            marker=dict(symbol='star', size=13, color=verdict_color, line=dict(width=1.4, color='#ffffff')),
+            error_x=dict(
+                type='data',
+                symmetric=False,
+                array=[dr['ci95'][1] - slope_d],
+                arrayminus=[slope_d - dr['ci95'][0]],
+                color=verdict_color,
+                thickness=4.6,
+                width=8,
+            ),
+            hovertemplate=(
+                f"<b>Paired Difference D = {loc_b} − {loc_a} (Cautious HAC)</b><br>"
+                f"Slope diff: {format_bound(slope_d)} {rate_unit}<br>"
+                f"95% CI: {format_interval(dr['ci95'], rate_unit)}<br>"
+                f"p = {dr['p_value']:.4g}<extra></extra>"
+            ),
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[slope_d],
+            y=[y_d_base - (0.11 if lens_mode == 'both' else 0.0)],
+            mode='markers',
+            name='Conventional 95% OLS',
+            opacity=0.95 if show_iid else 0.22,
+            marker=dict(symbol='circle-open', size=9, color='#455c61', line=dict(width=2, color='#455c61')),
+            error_x=dict(
+                type='data',
+                symmetric=False,
+                array=[dr['iid_ci95'][1] - slope_d],
+                arrayminus=[slope_d - dr['iid_ci95'][0]],
+                color='#52696e',
+                thickness=2.2,
+                width=5,
+            ),
+            hovertemplate=(
+                f"<b>Paired Difference D = {loc_b} − {loc_a} (Conventional OLS)</b><br>"
+                f"Slope diff: {format_bound(slope_d)} {rate_unit}<br>"
+                f"95% CI: {format_interval(dr['iid_ci95'], rate_unit)}<br>"
+                f"p = {dr['iid_p']:.4g}<extra></extra>"
+            ),
+        )
+    )
+
+    active_ci = trial['active_ci']
+    verdict_badge = 'Excludes 0' if trial['active_excludes_zero'] else 'Crosses 0 · Inconclusive'
+    fig.add_annotation(
+        x=0.5,
+        y=2.14,
+        xref='paper',
+        yref='y',
+        xanchor='center',
+        text=(
+            f"<b>⚖ D = B − A: {format_bound(slope_d)}</b> "
+            f"[{format_bound(active_ci[0])}, {format_bound(active_ci[1])} · <b>{verdict_badge}</b>]"
+        ),
+        showarrow=False,
+        font=dict(size=10.4, color=verdict_color, family='Arial, sans-serif'),
+        bgcolor='rgba(249,247,242,0.95)',
+    )
+
+    # Divider separating Paired Trial from contextual separate site intervals
+    fig.add_hline(y=0.92, line_width=1.2, line_dash='dot', line_color='#cbc3b2')
+    fig.add_annotation(
+        x=0.5,
+        y=0.98,
+        xref='paper',
+        yref='y',
+        xanchor='center',
+        text='Separate single-site fits (interval overlap does not test B − A)',
+        showarrow=False,
+        font=dict(size=9.8, color='#55696e'),
+        bgcolor=CHART_BG,
+    )
+
+    ctx_specs = [
+        (loc_b, rb, 0.45, SITE_B_COLOR, 'diamond', '◆'),
+        (loc_a, ra, 0.0, SITE_A_COLOR, 'circle', '●'),
+    ]
+    for cname, cres, y_pos, ccolor, csym, cglyph in ctx_specs:
+        if cres is None:
+            continue
+        cslope = cres['slope_decade']
+        cci = cres['iid_ci95'] if lens_mode == 'conventional' else cres['ci95']
+        fig.add_trace(
+            go.Scatter(
+                x=[cslope],
+                y=[y_pos],
+                mode='markers',
+                showlegend=False,
+                opacity=0.68,
+                marker=dict(symbol=csym, size=8.5, color=ccolor),
+                error_x=dict(
+                    type='data',
+                    symmetric=False,
+                    array=[cci[1] - cslope],
+                    arrayminus=[cslope - cci[0]],
+                    color=ccolor,
+                    thickness=2.4,
+                    width=5,
+                ),
+                hovertemplate=(
+                    f"<b>{cname} alone (contextual)</b><br>"
+                    f"Slope: {format_bound(cslope)} {rate_unit}<br>"
+                    f"95% CI: {format_interval(cci, rate_unit)}<extra></extra>"
+                ),
+            )
+        )
+        fig.add_annotation(
+            x=min(max(cslope, x_min + 0.16 * (x_max - x_min)), x_max - 0.24 * (x_max - x_min)),
+            y=y_pos + 0.19,
+            xref='x',
+            yref='y',
+            xanchor='center',
+            text=f"{cglyph} {cname}: {format_bound(cslope)} [{format_bound(cci[0])}, {format_bound(cci[1])}]",
+            showarrow=False,
+            font=dict(size=9.5, color=ccolor),
+            bgcolor='rgba(249,247,242,0.92)',
+        )
+
+    fig.update_layout(
+        height=365,
+        template='plotly_white',
+        paper_bgcolor=CHART_BG,
+        plot_bgcolor=CHART_BG,
+        font=dict(family='Arial, sans-serif', color=INK_COLOR, size=12),
+        margin=dict(l=88, r=24, t=58, b=72),
+        legend=dict(
+            orientation='h',
+            yanchor='top',
+            y=-0.27,
+            xanchor='left',
+            x=0.0,
+            font=dict(size=10.8),
+            bgcolor='rgba(249,247,242,0.0)',
+        ),
+        xaxis=dict(
+            title=f"Decadal rate ({rate_unit})",
+            range=[x_min, x_max],
+            gridcolor='#e3ded2',
+            zeroline=False,
+        ),
+        yaxis=dict(
+            tickmode='array',
+            tickvals=[0.0, 0.45, y_d_base],
+            ticktext=[f"● {loc_a}", f"◆ {loc_b}", "<b>⚖ D = B − A</b>"],
+            range=[-0.35, 2.38],
+            gridcolor='#ece8de',
+        ),
+    )
+    return fig
+
+
+def build_trial_provenance_payload(trial, loc_a, lat_a, lon_a, loc_b, lat_b, lon_b, data_a, data_b):
+    """Build machine-readable Evidence Passport metadata with NASA sources and trial results."""
+    dr = trial['diff_result']
+    ra = trial['aligned_site_a_result']
+    rb = trial['aligned_site_b_result']
+    return {
+        'earthpulse_version': 'V3 — The Climate Trial',
+        'exploratory': True,
+        'claim_question': format_trial_question(loc_a, loc_b, trial['parameter']),
+        'parameter': trial['parameter'],
+        'variable_name': trial['variable_name'],
+        'units': trial['unit'],
+        'rate_units': trial['rate_unit'],
+        'analysis_period': f"{trial['start']}–{trial['end']}",
+        'n_paired_years': trial['n_paired'],
+        'missing_paired_years': trial['missing_paired'],
+        'interval_mode': trial['interval_mode'],
+        'verdict_code': trial['verdict_code'],
+        'verdict_label': trial['verdict_label'],
+        'interpretation': trial['interpretation'],
+        'slope_difference_identity_delta': trial['slope_diff_identity_delta'],
+        'residual_correlation_r': trial['residual_correlation'],
+        'paired_difference_stats': {k: v for k, v in dr.items() if k != 'fitted'} if dr else None,
+        'locations': {
+            'location_a': {
+                'name': loc_a,
+                'requested_coords': {'latitude': lat_a, 'longitude': lon_a},
+                'returned_geometry': data_a.get('geometry'),
+                'nasa_header': data_a.get('header'),
+                'retrieval': data_a.get('_earthpulse', {}),
+                'aligned_stats': {k: v for k, v in ra.items() if k != 'fitted'} if ra else None,
+            },
+            'location_b': {
+                'name': loc_b,
+                'requested_coords': {'latitude': lat_b, 'longitude': lon_b},
+                'returned_geometry': data_b.get('geometry'),
+                'nasa_header': data_b.get('header'),
+                'retrieval': data_b.get('_earthpulse', {}),
+                'aligned_stats': {k: v for k, v in rb.items() if k != 'fitted'} if rb else None,
+            },
+        },
+        'methodology_guardrails': [
+            'Minimum 30 consecutive complete annual values without interpolation.',
+            'Paired annual difference D(year) = Variable_B(year) - Variable_A(year).',
+            'Cautious screening uses max(SE_OLS, SE_HAC) with Bartlett kernel and finite-sample t correction.',
+            'Inconclusive result means interval crosses zero; it does NOT imply equal trends.',
+            'Exploratory trial without multiplicity adjustment across candidate city pairs or windows.',
+        ],
+    }
+
+
+def build_evidence_passport_markdown(trial, loc_a, lat_a, lon_a, loc_b, lat_b, lon_b, data_a, data_b):
+    """Create a downloadable Markdown Evidence Passport for The Climate Trial."""
+    rate_unit = trial['rate_unit']
+    dr = trial['diff_result']
+    ra = trial['aligned_site_a_result']
+    rb = trial['aligned_site_b_result']
+    lines = [
+        f"# EarthPulse V3 — Climate Trial Evidence Passport",
+        "",
+        f"- **Trial Question**: {format_trial_question(loc_a, loc_b, trial['parameter'])}",
+        f"- **Statistical Hypothesis**: Paired annual difference `D(year) = {loc_b}(year) - {loc_a}(year)`",
+        f"- **Variable**: {trial['variable_name']} (`{trial['parameter']}`, `{trial['unit']}`)",
+        f"- **Analysis Dates**: `{trial['start']}–{trial['end']}` (`{trial['n_paired']}` complete paired years)",
+        f"- **Inference Lens**: `{trial['interval_mode']}` (**Exploratory — unadjusted for multiplicity**)",
+        f"- **Derived Verdict**: **{trial['verdict_label']}**",
+        f"- **Interpretation**: {trial['interpretation']}",
+        "",
+    ]
+    if trial['eligible'] and dr is not None:
+        lines.extend([
+            "## Paired Difference Inference (`D = B - A`)",
+            "",
+            f"| Metric | Value |",
+            f"| :--- | :--- |",
+            f"| Estimated Slope Difference / Decade | `{format_bound(dr['slope_decade'])} {rate_unit}` (`{dr['slope_decade']:+.6f}`) |",
+            f"| Cautious 95% CI (HAC / max SE, `{dr['hac_lags']}` lags) | `{format_interval(dr['ci95'], rate_unit)}` (p = {dr['p_value']:.4g}) |",
+            f"| Conventional 95% CI (OLS independent years) | `{format_interval(dr['iid_ci95'], rate_unit)}` (p = {dr['iid_p']:.4g}) |",
+            f"| Paired Residual Lag-1 Autocorrelation (`ρ₁`) | `{dr['residual_lag1']:+.3f}` |",
+            f"| Residual Cross-Site Correlation (`r`) | `{trial['residual_correlation']:+.3f}` |" if trial['residual_correlation'] is not None else "| Residual Cross-Site Correlation (`r`) | N/A |",
+            f"| OLS Slope Difference Identity Check (`|slope(B-A) - (slope(B)-slope(A))|`) | `{trial['slope_diff_identity_delta']:.2e}` |" if trial['slope_diff_identity_delta'] is not None else "| OLS Slope Difference Identity Check | N/A |",
+            "",
+        ])
+    if ra is not None and rb is not None:
+        lines.extend([
+            "## Individual Aligned Trends (Identical Years Reference)",
+            "",
+            f"- **{loc_a}** (`{lat_a:.4f}°N, {lon_a:.4f}°E`): `{format_bound(ra['slope_decade'])} {rate_unit}`, cautious 95% CI `{format_interval(ra['ci95'], rate_unit)}` (`ρ₁ = {ra['residual_lag1']:+.3f}`)",
+            f"- **{loc_b}** (`{lat_b:.4f}°N, {lon_b:.4f}°E`): `{format_bound(rb['slope_decade'])} {rate_unit}`, cautious 95% CI `{format_interval(rb['ci95'], rate_unit)}` (`ρ₁ = {rb['residual_lag1']:+.3f}`)",
+            "",
+        ])
+    lines.extend([
+        "## NASA Source & Provenance Metadata",
+        "",
+        f"- **Data Origin**: `{data_a.get('_earthpulse', {}).get('data_origin', 'NASA POWER API; no synthetic measurements')}`",
+        f"- **NASA Header**: `{data_a.get('header', {}).get('title', 'NASA/POWER MERRA-2')}` (`API {data_a.get('header', {}).get('api', {}).get('version', 'unknown')}`)",
+        f"- **Location A Request URL**: {data_a.get('_earthpulse', {}).get('request_url', 'Bundled MERRA-2 snapshot')}",
+        f"- **Location A Retrieved UTC**: `{data_a.get('_earthpulse', {}).get('retrieved_utc', 'N/A')}`",
+        f"- **Location B Request URL**: {data_b.get('_earthpulse', {}).get('request_url', 'Bundled MERRA-2 snapshot')}",
+        f"- **Location B Retrieved UTC**: `{data_b.get('_earthpulse', {}).get('retrieved_utc', 'N/A')}`",
+        "",
+        "## Methodological Guardrails",
+        "",
+        f"- {trial['overlap_insight']}",
+        f"- {trial['time_dependence_note']}",
+    ])
+    return "\n".join(lines)
+
+
 # --- Sidebar Controls ---
 with st.sidebar:
     st.header('EarthPulse Controls')
@@ -814,25 +1674,445 @@ with st.sidebar:
     st.caption('Built by Hafida Belayd, EarthPulse Labs. Independent NASA Space Apps prototype. No NASA endorsement.')
 
 # --- Top Eyebrow & View Entry Points ---
+st.session_state.setdefault('trial_tested', False)
+st.session_state.setdefault('trial_loc_a', 'Casablanca')
+st.session_state.setdefault('trial_loc_b', 'Marrakech')
+st.session_state.setdefault('trial_param', 'T2M')
+st.session_state.setdefault('trial_period', (1991, 2025))
+st.session_state.setdefault('trial_lens', 'Show both: Cautious (HAC) + Conventional (OLS)')
+
+
+def _apply_trial_preset(loc_a_v, loc_b_v, param_v, period_v=(1991, 2025)):
+    st.session_state['trial_loc_a'] = loc_a_v
+    st.session_state['trial_loc_b'] = loc_b_v
+    st.session_state['trial_param'] = param_v
+    st.session_state['trial_period'] = period_v
+    st.session_state['trial_tested'] = True
+
+
 st.markdown(
     '<div class="eyebrow-row">'
-    '<span class="eyebrow">EARTHPULSE LABS · MERRA-2 GRIDDED CLIMATE TREND DETECTIVE</span>'
-    '<span class="provenance-badge">NASA POWER / MERRA-2 · 30-Year Consecutive Rule · Newey–West HAC Screen</span>'
+    '<span class="eyebrow">EARTHPULSE V3 · THE CLIMATE TRIAL — PUT CLIMATE CLAIMS ON TRIAL.</span>'
+    '<span class="provenance-badge">Exploratory Analysis · NASA POWER / MERRA-2 · 30-Year Rule · Newey–West HAC</span>'
     '</div>',
     unsafe_allow_html=True,
 )
 
 nav_choice = st.radio(
     'Investigation mode',
-    options=['Compare: The Trend Verdict', 'Single Location & Custom Coordinates'],
+    options=[
+        'The Climate Trial (V3)',
+        'Compare: The Trend Verdict (V2)',
+        'Single Location & Custom Coordinates',
+    ],
     index=0,
     horizontal=True,
     label_visibility='collapsed',
 )
 
-active_view = 'compare' if nav_choice.startswith('Compare') else 'single'
+if nav_choice.startswith('The Climate Trial'):
+    active_view = 'trial'
+elif nav_choice.startswith('Compare'):
+    active_view = 'compare'
+else:
+    active_view = 'single'
 
-if active_view == 'compare':
+if active_view == 'trial':
+    trial_loc_options = list(LOCATIONS.keys()) + ['Custom coordinates']
+    lens_map = {
+        'Show both: Cautious (HAC) + Conventional (OLS)': ('cautious', 'both'),
+        'Cautious 95% screen (accounts for time dependence)': ('cautious', 'cautious'),
+        'Conventional 95% OLS (assumes independent years)': ('conventional', 'conventional'),
+    }
+
+    tc1, tc2, tc3 = st.columns([1.05, 1.05, 1.3])
+    with tc1:
+        loc_a_choice = st.selectbox('Location A (● Baseline)', trial_loc_options, key='trial_loc_a')
+        if loc_a_choice == 'Custom coordinates':
+            ca1, ca2 = st.columns(2)
+            lat_a = ca1.number_input('Lat A (°N)', -90.0, 90.0, 33.5731, step=0.01, format='%.4f', key='trial_lat_a')
+            lon_a = ca2.number_input('Lon A (°E)', -180.0, 180.0, -7.5898, step=0.01, format='%.4f', key='trial_lon_a')
+            loc_a = f"Custom A ({lat_a:.2f}°, {lon_a:.2f}°)"
+        else:
+            loc_a = loc_a_choice
+            lat_a, lon_a = LOCATIONS[loc_a]
+    with tc2:
+        loc_b_choice = st.selectbox('Location B (◆ Challenger)', trial_loc_options, key='trial_loc_b')
+        if loc_b_choice == 'Custom coordinates':
+            cb1, cb2 = st.columns(2)
+            lat_b = cb1.number_input('Lat B (°N)', -90.0, 90.0, 31.6295, step=0.01, format='%.4f', key='trial_lat_b')
+            lon_b = cb2.number_input('Lon B (°E)', -180.0, 180.0, -7.9811, step=0.01, format='%.4f', key='trial_lon_b')
+            loc_b = f"Custom B ({lat_b:.2f}°, {lon_b:.2f}°)"
+        else:
+            loc_b = loc_b_choice
+            lat_b, lon_b = LOCATIONS[loc_b]
+    with tc3:
+        parameter = st.selectbox(
+            'Common climate variable',
+            list(VARIABLES.keys()),
+            format_func=lambda k: f"{VARIABLES[k][0]} ({VARIABLES[k][1]})",
+            key='trial_param',
+        )
+
+    start, end = st.session_state['trial_period']
+    interval_mode, whisker_lens = lens_map[st.session_state['trial_lens']]
+
+    try:
+        with st.spinner('Retrieving NASA POWER records for paired trial…'):
+            data_a, bundled_a = load_location_data(loc_a_choice, lat_a, lon_a, start, end, data_mode)
+            data_b, bundled_b = load_location_data(loc_b_choice, lat_b, lon_b, start, end, data_mode)
+
+        trial = climate_trial(
+            loc_a,
+            data_a,
+            loc_b,
+            data_b,
+            parameter=parameter,
+            start=start,
+            end=end,
+            interval_mode=interval_mode,
+        )
+        v2_comp = compare_locations(
+            loc_a,
+            data_a,
+            loc_b,
+            data_b,
+            parameter=parameter,
+            start=start,
+            end=end,
+            interval_mode=interval_mode,
+        )
+
+        # Hero Question
+        st.markdown(
+            f'<p class="trial-tagline">THE CLIMATE TRIAL · “PUT CLIMATE CLAIMS ON TRIAL.”</p>'
+            f'<div class="editorial-headline">{format_trial_question(loc_a, loc_b, parameter)}</div>'
+            f'<p class="trial-subq"><b>Are the two trends significantly different from each other?</b> '
+            f'Aligned paired series <code>D(year) = {loc_b}(year) − {loc_a}(year)</code> across {start}–{end} '
+            f'<span class="provenance-badge">Exploratory · {trial["n_paired"]} paired yr</span></p>',
+            unsafe_allow_html=True,
+        )
+
+        # Two-City Face-Off Cards + Central TEST THE DIFFERENCE Action
+        sa, sb = trial['site_a'], trial['site_b']
+        rate_unit = trial['rate_unit']
+
+        def _site_card_html(site_info, coords, role_label, extra_cls, accent_color):
+            lat_v, lon_v = coords
+            if site_info['eligible']:
+                sr = site_info['result']
+                ex = site_info['active_excludes_zero']
+                ci_active = site_info['active_ci']
+                bcls = 'badge-clear' if ex else 'badge-cautious'
+                btxt = 'Excludes 0' if ex else 'Crosses 0'
+                body = (
+                    f'<div class="city-card-rate" style="color:{accent_color};">'
+                    f'{format_bound(sr["slope_decade"])} <span style="font-size:0.88rem;font-weight:500;">{rate_unit}</span></div>'
+                    f'<div class="city-card-meta">'
+                    f'95% CI: <b>{format_interval(ci_active, "")}</b> <span class="{bcls}">{btxt}</span><br>'
+                    f'Mean: {sr["mean"]:.2f} {trial["unit"]} · Lag-1 ρ₁ = {sr["residual_lag1"]:+.2f}'
+                    f'</div>'
+                )
+            else:
+                body = (
+                    f'<div class="city-card-rate" style="color:#6e4b0c;font-size:1.15rem;">Inference withheld</div>'
+                    f'<div class="city-card-meta">{site_info["n_complete"]} complete annual values in {start}–{end}. '
+                    f'At least 30 consecutive complete years required.</div>'
+                )
+            return (
+                f'<div class="city-card {extra_cls}">'
+                f'<div class="city-card-kicker">{role_label} · {lat_v:.2f}°N, {lon_v:.2f}°E</div>'
+                f'<div class="city-card-name">{site_info["location"]}</div>'
+                f'{body}'
+                f'</div>'
+            )
+
+        face_a, face_vs, face_b = st.columns([1.15, 0.95, 1.15], gap='medium')
+        with face_a:
+            st.markdown(_site_card_html(sa, (lat_a, lon_a), '● Location A (Baseline)', 'city-card-a', SITE_A_COLOR), unsafe_allow_html=True)
+        with face_vs:
+            overlap_hint = (
+                "Separate 95% intervals overlap—overlap alone cannot resolve whether slopes differ."
+                if trial['separate_intervals_overlap']
+                else "Never infer slope differences from separate intervals alone—test D(year) directly."
+            )
+            vs_badge = 'TRIAL ACTIVE · B − A' if st.session_state['trial_tested'] else 'VS · H₀: SLOPE(B) − SLOPE(A) = 0'
+            st.markdown(
+                f'<div class="vs-card">'
+                f'<div class="vs-pill">{vs_badge}</div>'
+                f'<div class="vs-prompt">{overlap_hint}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            btn_label = '⚖ TEST THE DIFFERENCE' if not st.session_state['trial_tested'] else '↻ RE-RUN TRIAL'
+            if st.button(btn_label, type='primary', use_container_width=True, key='trial_run_btn'):
+                st.session_state['trial_tested'] = True
+        with face_b:
+            st.markdown(_site_card_html(sb, (lat_b, lon_b), '◆ Location B (Challenger)', 'city-card-b', SITE_B_COLOR), unsafe_allow_html=True)
+
+        if trial['years_a_only'] or trial['years_b_only']:
+            st.warning(
+                f"Unpaired incomplete years dropped without interpolation: "
+                f"missing paired years {', '.join(map(str, trial['missing_paired']))}."
+            )
+
+        if not st.session_state['trial_tested']:
+            # Pre-Trial State: Original Time Series + Separate Unpaired Intervals
+            p_left, p_right = st.columns([1.12, 1.0])
+            with p_left:
+                st.markdown(
+                    f'<div class="chart-header-box">'
+                    f'<div class="chart-header-title">Step 1 · Original Aligned Series &amp; Separate Fits ({trial["unit"]})</div>'
+                    f'<div class="chart-header-sub">Click TEST THE DIFFERENCE above to animate the paired transformation D(year) = {loc_b} − {loc_a}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                st.plotly_chart(build_comparison_series_figure(v2_comp), use_container_width=True)
+            with p_right:
+                st.markdown(
+                    f'<div class="chart-header-box">'
+                    f'<div class="chart-header-title">Separate Single-Site Intervals ({rate_unit})</div>'
+                    f'<div class="chart-header-sub">Each interval tests one site vs. 0.0; paired testing is needed to compare B against A</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                st.plotly_chart(build_whisker_figure(v2_comp, whisker_lens), use_container_width=True)
+        else:
+            # Post-Trial State: Animated Verdict Reveal + Transitioned Paired Charts + Challenge Panel + Passport
+            vcode = trial['verdict_code']
+            if vcode == 'positive_difference':
+                v_banner_cls, v_pill_cls = 'verdict-positive', 'verdict-pill-pos'
+            elif vcode == 'negative_difference':
+                v_banner_cls, v_pill_cls = 'verdict-negative', 'verdict-pill-neg'
+            elif vcode == 'inconclusive':
+                v_banner_cls, v_pill_cls = 'verdict-inconclusive', 'verdict-pill-inc'
+            else:
+                v_banner_cls, v_pill_cls = 'verdict-ineligible', 'verdict-pill-warn'
+
+            if trial['eligible']:
+                dr = trial['diff_result']
+                ci_txt = format_interval(trial['active_ci'], rate_unit)
+                corr_txt = f"{trial['residual_correlation']:+.2f}" if trial['residual_correlation'] is not None else 'N/A'
+                id_txt = f"{trial['slope_diff_identity_delta']:.1e}" if trial['slope_diff_identity_delta'] is not None else 'N/A'
+                metrics_html = (
+                    f'<div class="trial-metrics-grid">'
+                    f'<div class="trial-metric-box"><div class="trial-metric-label">Slope Difference (B − A)</div>'
+                    f'<div class="trial-metric-value">{format_bound(dr["slope_decade"])} {rate_unit}</div>'
+                    f'<div class="trial-metric-sub">Exact: {dr["slope_decade"]:+.5f} {rate_unit}</div></div>'
+                    f'<div class="trial-metric-box"><div class="trial-metric-label">95% CI &amp; Exploratory p</div>'
+                    f'<div class="trial-metric-value">{format_interval(trial["active_ci"], "")}</div>'
+                    f'<div class="trial-metric-sub">p = {trial["active_p"]:.4g} ({interval_mode})</div></div>'
+                    f'<div class="trial-metric-box"><div class="trial-metric-label">Noise Cancellation</div>'
+                    f'<div class="trial-metric-value">r = {corr_txt}</div>'
+                    f'<div class="trial-metric-sub">Paired lag-1 ρ₁ = {dr["residual_lag1"]:+.2f}</div></div>'
+                    f'<div class="trial-metric-box"><div class="trial-metric-label">OLS Identity Check</div>'
+                    f'<div class="trial-metric-value">Δ = {id_txt}</div>'
+                    f'<div class="trial-metric-sub">slope(B−A) == slope(B) − slope(A)</div></div>'
+                    f'</div>'
+                )
+            else:
+                metrics_html = ''
+
+            verdict_html = (
+                f'<div class="trial-reveal-panel">'
+                f'<div class="verdict-banner {v_banner_cls}">'
+                f'<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:0.4rem;">'
+                f'<span class="{v_pill_cls}">{trial["verdict_label"]}</span>'
+                f'<span class="provenance-badge">Exploratory · D(year) = {loc_b} − {loc_a} ({start}–{end})</span>'
+                f'</div>'
+                f'{metrics_html}'
+                f'<p style="margin:0.45rem 0 0.25rem 0;font-size:0.96rem;color:#14282d;line-height:1.48;">{trial["interpretation"]}</p>'
+                f'<p style="margin:0.2rem 0 0 0;font-size:0.84rem;color:#3c5358;line-height:1.42;">{trial["overlap_insight"]}</p>'
+                f'</div>'
+                f'</div>'
+            )
+            st.markdown(verdict_html, unsafe_allow_html=True)
+
+            t_left, t_right = st.columns([1.15, 1.0])
+            with t_left:
+                st.markdown(
+                    f'<div class="chart-header-box">'
+                    f'<div class="chart-header-title">Paired Difference Series D(year) = {loc_b} − {loc_a} ({trial["unit"]})</div>'
+                    f'<div class="chart-header-sub">Use ▶ Animate above the plot to watch centered A &amp; B collapse into paired D(year)</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                st.plotly_chart(build_trial_transition_figure(trial), use_container_width=True)
+            with t_right:
+                st.markdown(
+                    f'<div class="chart-header-box">'
+                    f'<div class="chart-header-title">Trial Zero-Line Verdict Interval ({rate_unit})</div>'
+                    f'<div class="chart-header-sub">Zero reference line (0.0 = no slope difference) · Cautious HAC vs. Conventional OLS</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                st.plotly_chart(build_trial_verdict_figure(trial, whisker_lens), use_container_width=True)
+
+            # --- Compact Challenge the Verdict Investigation Panel ---
+            with st.container(border=True):
+                st.markdown(
+                    '<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:0.4rem;">'
+                    '<h3 style="margin:0;font-size:1.18rem;">Challenge the Verdict · Exploratory Sensitivity Panel</h3>'
+                    '<span class="provenance-badge">Exploratory · Unadjusted across windows &amp; pairs</span>'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+                ch1, ch2 = st.columns([1.05, 1.25])
+                with ch1:
+                    st.slider(
+                        'Analysis period (minimum 30 consecutive complete years)',
+                        1981,
+                        2025,
+                        key='trial_period',
+                    )
+                with ch2:
+                    st.radio(
+                        'OLS vs. Newey–West HAC uncertainty lens',
+                        [
+                            'Show both: Cautious (HAC) + Conventional (OLS)',
+                            'Cautious 95% screen (accounts for time dependence)',
+                            'Conventional 95% OLS (assumes independent years)',
+                        ],
+                        horizontal=True,
+                        key='trial_lens',
+                    )
+
+                st.caption('Try another claim on trial (computes live from NASA snapshots):')
+                q1, q2, q3, q4 = st.columns(4)
+                q1.button(
+                    'Marrakech − Casa · T2M',
+                    on_click=_apply_trial_preset,
+                    args=('Casablanca', 'Marrakech', 'T2M'),
+                    use_container_width=True,
+                    key='preset_pos',
+                )
+                q2.button(
+                    'Casa − Marrakech · T2M',
+                    on_click=_apply_trial_preset,
+                    args=('Marrakech', 'Casablanca', 'T2M'),
+                    use_container_width=True,
+                    key='preset_neg',
+                )
+                q3.button(
+                    'Rabat − Casa · T2M',
+                    on_click=_apply_trial_preset,
+                    args=('Casablanca', 'Rabat', 'T2M'),
+                    use_container_width=True,
+                    key='preset_inc_t2m',
+                )
+                q4.button(
+                    'Marrakech − Casa · Rain',
+                    on_click=_apply_trial_preset,
+                    args=('Casablanca', 'Marrakech', 'PRECTOTCORR'),
+                    use_container_width=True,
+                    key='preset_inc_rain',
+                )
+
+                ch_tab_sens, ch_tab_series = st.tabs([
+                    'OLS vs. HAC Lens & Identity Proof',
+                    f'Year-to-Year Paired Series D(year) ({trial["n_paired"]} yr)',
+                ])
+                with ch_tab_sens:
+                    if trial['eligible']:
+                        dr = trial['diff_result']
+                        ra = trial['aligned_site_a_result']
+                        rb = trial['aligned_site_b_result']
+                        hac_cls = 'badge-clear' if trial['cautious_excludes_zero'] else 'badge-cautious'
+                        hac_txt = 'Excludes 0' if trial['cautious_excludes_zero'] else 'Crosses 0'
+                        ols_cls = 'badge-clear' if trial['iid_excludes_zero'] else 'badge-cautious'
+                        ols_txt = 'Excludes 0' if trial['iid_excludes_zero'] else 'Crosses 0'
+                        sens_html = (
+                            f'<p style="font-size:0.9rem;color:#243b40;margin:0.25rem 0 0.5rem 0;">{trial["time_dependence_note"]}</p>'
+                            f'<div class="table-wrapper" tabindex="0" role="region" aria-label="Paired difference OLS versus HAC sensitivity">'
+                            f'<table><thead><tr>'
+                            f'<th>Paired Test Metric ({dr["start"]}–{dr["end"]}, n={dr["n"]})</th>'
+                            f'<th>Conventional OLS (i.i.d.)</th>'
+                            f'<th>Cautious HAC ({dr["hac_lags"]} lags / max SE)</th>'
+                            f'<th>OLS Identity Verification</th>'
+                            f'</tr></thead><tbody><tr>'
+                            f'<td><b>D = {loc_b} − {loc_a}</b> ({format_bound(dr["slope_decade"])} {rate_unit})</td>'
+                            f'<td>{format_interval(dr["iid_ci95"], rate_unit)} · p = {dr["iid_p"]:.4g} <span class="{ols_cls}">{ols_txt}</span></td>'
+                            f'<td><b>{format_interval(dr["ci95"], rate_unit)}</b> · p = {dr["p_value"]:.4g} <span class="{hac_cls}">{hac_txt}</span></td>'
+                            f'<td>slope(B−A): {dr["slope_decade"]:+.6f} vs. ({rb["slope_decade"]:+.6f}) − ({ra["slope_decade"]:+.6f}) = {rb["slope_decade"] - ra["slope_decade"]:+.6f} (|Δ|={trial["slope_diff_identity_delta"]:.1e})</td>'
+                            f'</tr></tbody></table></div>'
+                        )
+                        st.markdown(sens_html, unsafe_allow_html=True)
+                    else:
+                        st.warning(trial['interpretation'])
+
+                with ch_tab_series:
+                    mdf = trial['merged']
+                    if not mdf.empty:
+                        rows_html = []
+                        for _, row in mdf.iterrows():
+                            fit_td = f"{row['fitted_diff']:+.3f}" if 'fitted_diff' in mdf.columns else '—'
+                            res_td = f"{row['residual_diff']:+.3f}" if 'residual_diff' in mdf.columns else '—'
+                            rows_html.append(
+                                f"<tr><td>{int(row['year'])}</td>"
+                                f"<td>{row['value_a']:.2f}</td>"
+                                f"<td>{row['value_b']:.2f}</td>"
+                                f"<td><b>{row['diff']:+.3f}</b></td>"
+                                f"<td>{fit_td}</td>"
+                                f"<td>{res_td}</td></tr>"
+                            )
+                        table_series_html = (
+                            f'<div class="table-wrapper" tabindex="0" role="region" aria-label="Year-by-year paired difference series">'
+                            f'<table><thead><tr>'
+                            f'<th>Year</th>'
+                            f'<th>{loc_a} ({trial["unit"]})</th>'
+                            f'<th>{loc_b} ({trial["unit"]})</th>'
+                            f'<th>D(year) = B − A</th>'
+                            f'<th>Linear Fit</th>'
+                            f'<th>Residual</th>'
+                            f'</tr></thead><tbody>{"".join(rows_html)}</tbody></table></div>'
+                        )
+                        st.markdown(table_series_html, unsafe_allow_html=True)
+                    else:
+                        st.info('No paired annual values available in this window.')
+
+            # --- Evidence Passport & Provenance Downloads ---
+            passport_md = build_evidence_passport_markdown(trial, loc_a, lat_a, lon_a, loc_b, lat_b, lon_b, data_a, data_b)
+            provenance_obj = build_trial_provenance_payload(trial, loc_a, lat_a, lon_a, loc_b, lat_b, lon_b, data_a, data_b)
+            export_trial_df = trial['merged'].copy()
+            export_trial_df['location_a'] = loc_a
+            export_trial_df['location_b'] = loc_b
+            export_trial_df['parameter'] = parameter
+            export_trial_df['units'] = trial['unit']
+            export_trial_df['source'] = 'NASA POWER / MERRA-2'
+
+            pd1, pd2, pd3 = st.columns(3)
+            pd1.download_button(
+                'Download Evidence Passport · MD',
+                passport_md,
+                f'earthpulse_trial_passport_{loc_a}_{loc_b}_{parameter}_{start}_{end}.md',
+                'text/markdown',
+            )
+            pd2.download_button(
+                'Download Paired Series D(year) · CSV',
+                export_trial_df.to_csv(index=False),
+                f'earthpulse_trial_series_{loc_a}_{loc_b}_{parameter}_{start}_{end}.csv',
+                'text/csv',
+            )
+            pd3.download_button(
+                'Download Trial Provenance · JSON',
+                json.dumps(provenance_obj, indent=2),
+                f'earthpulse_trial_provenance_{loc_a}_{loc_b}_{parameter}_{start}_{end}.json',
+                'application/json',
+            )
+
+            with st.expander('NASA POWER source metadata & exact API request links'):
+                st.json(provenance_obj)
+                l1, l2 = st.columns(2)
+                if data_a.get('_earthpulse', {}).get('request_url'):
+                    l1.link_button(f'Open exact NASA request · {loc_a}', data_a['_earthpulse']['request_url'])
+                if data_b.get('_earthpulse', {}).get('request_url'):
+                    l2.link_button(f'Open exact NASA request · {loc_b}', data_b['_earthpulse']['request_url'])
+
+    except Exception as error:
+        st.error(f'Unable to complete Climate Trial: {error}')
+        st.info('Use the verified bundled NASA snapshots for 1991–2025, or switch to Compare: The Trend Verdict (V2).')
+
+elif active_view == 'compare':
     loc_names = list(LOCATIONS.keys())
     lens_map = {
         'Show both: Cautious (HAC) + Conventional (OLS)': ('cautious', 'both'),

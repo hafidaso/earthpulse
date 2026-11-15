@@ -369,3 +369,266 @@ def compare_locations(loc_a, data_a, loc_b, data_b, parameter='T2M', start=1991,
         'time_dependence_note': time_dep_note,
         'overlap_note': overlap_note,
     }
+
+
+def paired_difference_series(frame_a, frame_b, start=None, end=None):
+    """Align two annual DataFrames by calendar year and construct D(year) = Variable_B(year) - Variable_A(year)."""
+    fa = frame_a[['year', 'value']].copy()
+    fb = frame_b[['year', 'value']].copy()
+    if start is not None:
+        fa = fa[fa['year'] >= start]
+        fb = fb[fb['year'] >= start]
+    if end is not None:
+        fa = fa[fa['year'] <= end]
+        fb = fb[fb['year'] <= end]
+
+    merged = (
+        pd.merge(fa, fb, on='year', suffixes=('_a', '_b'), how='inner')
+        .sort_values('year')
+        .reset_index(drop=True)
+    )
+    merged['diff'] = (merged['value_b'] - merged['value_a']).astype(float)
+
+    years_a = set(fa['year'].astype(int))
+    years_b = set(fb['year'].astype(int))
+    paired_years = set(merged['year'].astype(int))
+    years_a_only = sorted(years_a - years_b)
+    years_b_only = sorted(years_b - years_a)
+
+    if start is not None and end is not None:
+        span_start, span_end = int(start), int(end)
+    elif paired_years or years_a or years_b:
+        all_y = paired_years | years_a | years_b
+        span_start, span_end = min(all_y), max(all_y)
+    else:
+        span_start, span_end = 0, -1
+
+    missing_paired = [y for y in range(span_start, span_end + 1) if y not in paired_years]
+
+    diff_frame = merged[['year', 'diff']].rename(columns={'diff': 'value'})
+    frame_a_aligned = merged[['year', 'value_a']].rename(columns={'value_a': 'value'})
+    frame_b_aligned = merged[['year', 'value_b']].rename(columns={'value_b': 'value'})
+
+    return {
+        'merged': merged,
+        'diff_frame': diff_frame,
+        'frame_a_aligned': frame_a_aligned,
+        'frame_b_aligned': frame_b_aligned,
+        'years_a_only': years_a_only,
+        'years_b_only': years_b_only,
+        'missing_paired': missing_paired,
+    }
+
+
+def climate_trial(loc_a, data_a, loc_b, data_b, parameter='T2M', start=1991, end=2025, interval_mode='cautious'):
+    """Run an exploratory Climate Trial testing whether the paired annual difference D(year) = B(year) - A(year) has a nonzero slope."""
+    var_name, unit = VARIABLES[parameter]
+    rate_unit = f"{unit}/decade"
+    site_a = evaluate_site(loc_a, data_a, parameter, start, end, interval_mode=interval_mode)
+    site_b = evaluate_site(loc_b, data_b, parameter, start, end, interval_mode=interval_mode)
+
+    paired = paired_difference_series(site_a['frame'], site_b['frame'], start=start, end=end)
+    merged = paired['merged']
+    diff_frame = paired['diff_frame']
+    n_paired = int(len(diff_frame))
+    same_location = bool(loc_a == loc_b)
+    both_sites_eligible = bool(site_a['eligible'] and site_b['eligible'])
+    overlap = intervals_overlap(site_a['active_ci'], site_b['active_ci']) if both_sites_eligible else None
+
+    non_inference_rule = (
+        "Never infer a statistically significant slope difference merely from whether two separate confidence intervals overlap. "
+        "Formal comparison requires modeling the year-aligned paired series D(year) = Variable_B(year) - Variable_A(year)."
+    )
+
+    base = {
+        'parameter': parameter,
+        'variable_name': var_name,
+        'unit': unit,
+        'rate_unit': rate_unit,
+        'start': int(start),
+        'end': int(end),
+        'interval_mode': interval_mode,
+        'exploratory': True,
+        'site_a': site_a,
+        'site_b': site_b,
+        'same_location': same_location,
+        'both_sites_eligible': both_sites_eligible,
+        'separate_intervals_overlap': overlap,
+        'n_paired': n_paired,
+        'merged': merged,
+        'diff_frame': diff_frame,
+        'years_a_only': paired['years_a_only'],
+        'years_b_only': paired['years_b_only'],
+        'missing_paired': paired['missing_paired'],
+        'eligible': False,
+        'error': None,
+        'diff_result': None,
+        'aligned_site_a_result': None,
+        'aligned_site_b_result': None,
+        'slope_diff_identity_delta': None,
+        'residual_correlation': None,
+        'cautious_excludes_zero': False,
+        'iid_excludes_zero': False,
+        'active_excludes_zero': False,
+        'time_dependence_changes_verdict': False,
+        'active_ci': None,
+        'active_p': None,
+        'verdict_code': 'ineligible',
+        'verdict_label': 'Inference withheld (<30 consecutive paired years)',
+        'interpretation': '',
+        'time_dependence_note': '',
+        'overlap_insight': non_inference_rule,
+    }
+
+    if n_paired == 0 or same_location or (n_paired > 1 and np.ptp(diff_frame['value'].to_numpy(dtype=float)) == 0.0):
+        if same_location or (n_paired > 0 and np.ptp(diff_frame['value'].to_numpy(dtype=float)) == 0.0):
+            base['verdict_code'] = 'identical_series'
+            base['verdict_label'] = 'No trend difference testable (identical series)'
+            base['error'] = 'The paired annual difference D(year) is constant across every year.'
+            base['interpretation'] = (
+                f"Both selected inputs yield identical values at every paired year ({loc_a} vs. {loc_b}), "
+                "so D(year) = 0 with zero variance and inferential trend testing is undefined. Choose two distinct locations to put a claim on trial."
+            )
+        else:
+            base['error'] = 'No overlapping complete calendar years were found in the selected period.'
+            base['interpretation'] = (
+                f"No overlapping complete annual observations exist between {loc_a} and {loc_b} in {start}–{end}; "
+                "linear trend-difference inference cannot be computed."
+            )
+        base['time_dependence_note'] = (
+            "Paired difference inference requires at least 30 consecutive complete annual pairs with non-constant differences."
+        )
+        return base
+
+    try:
+        diff_res = trend(diff_frame)
+    except ValueError as exc:
+        gap_note = (
+            f" Missing paired years: {', '.join(map(str, paired['missing_paired']))}."
+            if paired['missing_paired']
+            else ""
+        )
+        base['error'] = str(exc)
+        base['interpretation'] = (
+            f"Inference unavailable for the paired difference D(year) = {loc_b} − {loc_a} in {start}–{end} "
+            f"({n_paired} aligned complete years).{gap_note} {exc} Observed annual pairs remain visible without fitted extrapolation."
+        )
+        base['time_dependence_note'] = (
+            "Both conventional OLS and Newey–West HAC difference tests require at least 30 consecutive complete paired years without gaps."
+        )
+        return base
+
+    # Check numerical OLS identity: slope(B - A) == slope(B) - slope(A) on identical aligned years
+    ra_aligned = rb_aligned = None
+    identity_delta = None
+    residual_corr = None
+    try:
+        ra_aligned = trend(paired['frame_a_aligned'])
+    except ValueError:
+        ra_aligned = None
+    try:
+        rb_aligned = trend(paired['frame_b_aligned'])
+    except ValueError:
+        rb_aligned = None
+
+    if ra_aligned is not None and rb_aligned is not None:
+        identity_delta = float(abs(diff_res['slope_decade'] - (rb_aligned['slope_decade'] - ra_aligned['slope_decade'])))
+        res_a = paired['frame_a_aligned']['value'].to_numpy(dtype=float) - np.array(ra_aligned['fitted'], dtype=float)
+        res_b = paired['frame_b_aligned']['value'].to_numpy(dtype=float) - np.array(rb_aligned['fitted'], dtype=float)
+        if np.std(res_a) > 1e-12 and np.std(res_b) > 1e-12:
+            residual_corr = float(np.corrcoef(res_a, res_b)[0, 1])
+
+    merged = merged.copy()
+    merged['fitted_diff'] = diff_res['fitted']
+    merged['residual_diff'] = (merged['diff'].to_numpy(dtype=float) - np.array(diff_res['fitted'], dtype=float)).tolist()
+
+    cautious_ex = excludes_zero(diff_res['ci95'])
+    iid_ex = excludes_zero(diff_res['iid_ci95'])
+    use_iid = interval_mode == 'conventional'
+    active_ci = diff_res['iid_ci95'] if use_iid else diff_res['ci95']
+    active_p = diff_res['iid_p'] if use_iid else diff_res['p_value']
+    active_ex = iid_ex if use_iid else cautious_ex
+    slope_diff = diff_res['slope_decade']
+
+    if active_ex and slope_diff > 0:
+        verdict_code = 'positive_difference'
+        verdict_label = 'Evidence of a positive trend difference'
+        interpretation = (
+            f"Exploratory verdict for D(year) = {loc_b} − {loc_a} ({diff_res['start']}–{diff_res['end']}, n = {diff_res['n']} paired years): "
+            f"{loc_b} has a more positive decadal slope than {loc_a} by an estimated {format_bound(slope_diff)} {rate_unit} "
+            f"(95% interval {format_interval(active_ci, rate_unit)}, two-sided p = {active_p:.4g}), strictly above zero."
+        )
+    elif active_ex and slope_diff < 0:
+        verdict_code = 'negative_difference'
+        verdict_label = 'Evidence of a negative trend difference'
+        interpretation = (
+            f"Exploratory verdict for D(year) = {loc_b} − {loc_a} ({diff_res['start']}–{diff_res['end']}, n = {diff_res['n']} paired years): "
+            f"{loc_b} has a lower (more negative) decadal slope than {loc_a} by an estimated {format_bound(slope_diff)} {rate_unit} "
+            f"(95% interval {format_interval(active_ci, rate_unit)}, two-sided p = {active_p:.4g}), strictly below zero."
+        )
+    else:
+        verdict_code = 'inconclusive'
+        verdict_label = 'Inconclusive result'
+        interpretation = (
+            f"Inconclusive exploratory result for D(year) = {loc_b} − {loc_a} ({diff_res['start']}–{diff_res['end']}, n = {diff_res['n']} paired years): "
+            f"the estimated difference slope is {format_bound(slope_diff)} {rate_unit}, and its 95% interval "
+            f"({format_interval(active_ci, rate_unit)}, p = {active_p:.4g}) crosses zero. "
+            f"This does NOT mean {loc_a} and {loc_b} share equal trends—only that the paired record does not resolve a directional difference at the 95% level."
+        )
+
+    flips = cautious_ex != iid_ex
+    if flips:
+        time_dep_note = (
+            f"Accounting for serial persistence changes the paired trial verdict: conventional OLS gives "
+            f"{format_interval(diff_res['iid_ci95'], rate_unit)} (p = {diff_res['iid_p']:.4g}), whereas "
+            f"positive lag-1 autocorrelation in D(year) (ρ₁ = {diff_res['residual_lag1']:+.2f}) widens the cautious "
+            f"Newey–West HAC screen ({diff_res['hac_lags']} lags) to {format_interval(diff_res['ci95'], rate_unit)} (p = {diff_res['p_value']:.4g})."
+        )
+    else:
+        corr_clause = (
+            f" Because {loc_a} and {loc_b} co-vary strongly across calendar years (detrended residual r = {residual_corr:+.2f}), "
+            f"year-by-year pairing removes shared regional variability and yields paired lag-1 ρ₁ = {diff_res['residual_lag1']:+.2f}."
+            if residual_corr is not None
+            else f" Paired lag-1 autocorrelation is ρ₁ = {diff_res['residual_lag1']:+.2f}."
+        )
+        time_dep_note = (
+            f"For the paired difference D(year), conventional OLS yields {format_interval(diff_res['iid_ci95'], rate_unit)} "
+            f"(p = {diff_res['iid_p']:.4g}) vs. cautious HAC {format_interval(diff_res['ci95'], rate_unit)} "
+            f"(p = {diff_res['p_value']:.4g}, {diff_res['hac_lags']} annual lags); both classify identically.{corr_clause}"
+        )
+
+    if overlap and active_ex:
+        overlap_insight = (
+            f"Notice why separate intervals are misleading: the individual 95% intervals for {loc_a} and {loc_b} overlap, "
+            f"yet the formal paired difference test excludes zero (p = {active_p:.4g}) because pairing annual observations cancels "
+            f"shared regional climate fluctuations rather than relying on naive interval overlap."
+        )
+    elif overlap is False and not active_ex:
+        overlap_insight = (
+            f"Even when separate site intervals appear separated, you must never conclude trends differ without testing D(year); "
+            f"here the direct paired difference crosses zero ({format_interval(active_ci, rate_unit)}), yielding an inconclusive result."
+        )
+    else:
+        overlap_insight = non_inference_rule
+
+    base.update({
+        'eligible': True,
+        'merged': merged,
+        'diff_result': diff_res,
+        'aligned_site_a_result': ra_aligned,
+        'aligned_site_b_result': rb_aligned,
+        'slope_diff_identity_delta': identity_delta,
+        'residual_correlation': residual_corr,
+        'cautious_excludes_zero': cautious_ex,
+        'iid_excludes_zero': iid_ex,
+        'active_ci': active_ci,
+        'active_p': active_p,
+        'active_excludes_zero': active_ex,
+        'time_dependence_changes_verdict': bool(flips),
+        'verdict_code': verdict_code,
+        'verdict_label': verdict_label,
+        'interpretation': interpretation,
+        'time_dependence_note': time_dep_note,
+        'overlap_insight': overlap_insight,
+    })
+    return base
