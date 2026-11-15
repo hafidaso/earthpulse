@@ -1,3 +1,0 @@
-# AI assistance
-
-Hafida Belayd supplied the project concept, requirements, audience and challenge selection. OpenAI Codex assisted in implementing and testing the baseline Python code, organizing the reproducibility materials, drafting copy, and creating the slide document. Google Gemini assisted in implementing the EarthPulse V2 comparison interface (“The Trend Verdict”), the EarthPulse V3 interactive paired-difference feature (“The Climate Trial”), time-dependence comparison controls, and automated regression tests. The demo screenshots show the running application. Source measurements were retrieved from NASA POWER. No synthetic measurements or generative imagery were used.

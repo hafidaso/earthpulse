@@ -137,4 +137,4 @@ The opening view compares **Casablanca** (`33.57°N, -7.59°E`) and **Marrakech*
    - **Interval Overlap**: Each 95% interval tests that location’s own slope against zero; overlapping intervals between two locations do not test whether their slopes differ from each other.
    - **Exploratory Scope**: No multiplicity correction is applied across repeated comparisons of cities, variables, or sub-periods. Statistical significance does not establish physical causation.
 
-See [`data/results.json`](data/results.json) for verified baseline outputs and SHA-256 snapshot checksums, [`REFERENCES.md`](REFERENCES.md) for data and software citations, and [`AI_DISCLOSURE.md`](AI_DISCLOSURE.md) for AI use.
+See [`data/results.json`](data/results.json) for verified baseline outputs and SHA-256 snapshot checksums and [`REFERENCES.md`](REFERENCES.md) for data and software citations.
