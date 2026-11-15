@@ -508,3 +508,39 @@ def test_compare_and_single_brief_modes_and_raw_hac_lens():
     assert 'Unaltered bundled' in bundled_sha['scope']
     assert 'Live NASA API' in live_sha['scope']
     assert live_sha['sha256'] != bundled_sha['sha256']
+
+
+def test_unified_versionless_hygiene_and_arabic_ui():
+    import ast
+    import re
+    import fitz
+
+    root = Path(__file__).parent
+    version_pat = re.compile(r'\b[vV][23]\b(?!\.\d)|EarthPulse\s*[Vv][23]')
+
+    # app.py: valid Python 3.11 syntax, Arabic RTL UI present, zero V2/V3 branding
+    app_src = (root / 'app.py').read_text(encoding='utf-8')
+    ast.parse(app_src)
+    assert 'محاكمة المناخ' in app_src
+    assert 'عدسة عدم اليقين' in app_src
+    assert 'تحميل موجز الأدلة العلمي (PDF)' in app_src
+    assert not version_pat.findall(app_src), f'Legacy version labels in app.py: {version_pat.findall(app_src)}'
+
+    # brief_pdf.py: zero V2/V3 labels (NASA POWER API v2.10.0 excluded via negative lookahead)
+    pdf_src = (root / 'brief_pdf.py').read_text(encoding='utf-8')
+    assert not version_pat.findall(pdf_src), f'Unexpected version labels in brief_pdf.py: {version_pat.findall(pdf_src)}'
+
+    # README.md: technical Arabic documentation, zero V2/V3 labels
+    readme_src = (root / 'README.md').read_text(encoding='utf-8')
+    assert 'نبض الأرض' in readme_src
+    assert not version_pat.findall(readme_src), f'Legacy version labels in README.md: {version_pat.findall(readme_src)}'
+
+    # EarthPulse-Demo.pdf: clean English 9-slide deck, zero V2/V3 branding
+    doc = fitz.open(root / 'EarthPulse-Demo.pdf')
+    assert len(doc) == 9
+    deck_text = '\n'.join(page.get_text() for page in doc)
+    assert not version_pat.findall(deck_text), f'Legacy version labels in EarthPulse-Demo.pdf: {version_pat.findall(deck_text)}'
+
+    # No obsolete V2/V3 screenshot artifacts left behind
+    legacy_shots = list((root / 'screenshots').glob('earthpulse_v[23]_*.png'))
+    assert not legacy_shots, f'Obsolete versioned screenshots still present: {legacy_shots}'
