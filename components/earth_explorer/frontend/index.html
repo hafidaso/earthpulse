@@ -52,7 +52,7 @@
   #webgl-stage {
     position: relative;
     width: 100%;
-    height: 440px;
+    height: 420px;
     cursor: grab;
     touch-action: none;
   }
@@ -63,28 +63,21 @@
     height: 100% !important;
   }
 
-  /* Overlay HUD */
-  .hud-top {
-    position: absolute;
-    top: 12px;
-    left: 12px;
-    right: 12px;
+  /* Dedicated non-overlapping top header bar above the WebGL viewport */
+  .explorer-header {
     display: flex;
     flex-wrap: wrap;
     justify-content: space-between;
-    align-items: flex-start;
-    gap: 10px;
-    pointer-events: none;
-    z-index: 6;
+    align-items: center;
+    gap: 10px 14px;
+    padding: 10px 14px;
+    background: #0b1824;
+    border-bottom: 1px solid var(--border-subtle);
   }
   .hud-card {
-    pointer-events: auto;
-    background: var(--bg-panel);
-    backdrop-filter: blur(8px);
-    border: 1px solid var(--border-subtle);
-    border-radius: 10px;
-    padding: 8px 12px;
-    max-inline-size: 46ch;
+    flex: 1 1 280px;
+    min-inline-size: 0;
+    max-inline-size: 56ch;
   }
   .hud-kicker {
     font-size: 0.72rem;
@@ -109,11 +102,11 @@
   }
 
   .hud-controls {
-    pointer-events: auto;
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
     align-items: center;
+    flex: 0 1 auto;
   }
 
   button.ctrl-btn {
@@ -245,24 +238,24 @@
 </head>
 <body>
 <div class="explorer-shell" id="explorer-shell" tabindex="0" role="region" aria-label="EarthPulse 3D Morocco Terrain and MERRA-2 Climate Context Explorer">
+  <div class="explorer-header">
+    <div class="hud-card">
+      <p class="hud-kicker" id="hud-kicker">3D EARTH OBSERVATION SCENE</p>
+      <h2 class="hud-title" id="hud-title">Morocco Coastal Plain to High Atlas</h2>
+      <p class="hud-desc" id="hud-desc">Drag to orbit, scroll to zoom, or click any city beacon to load it in the statistical trial.</p>
+    </div>
+    <div class="hud-controls" role="toolbar" aria-label="3D viewport controls">
+      <button type="button" class="ctrl-btn" id="btn-tour-toggle" aria-pressed="false" title="Start or pause 6-stop geographic tour">▶ Tour</button>
+      <button type="button" class="ctrl-btn" id="btn-tour-prev" title="Previous story camera stop">‹ Prev</button>
+      <button type="button" class="ctrl-btn" id="btn-tour-next" title="Next story camera stop">Next ›</button>
+      <button type="button" class="ctrl-btn" id="btn-grid-toggle" aria-pressed="true" title="Toggle approximate 0.5° × 0.625° MERRA-2 cell boxes">Grid Box</button>
+      <button type="button" class="ctrl-btn" id="btn-motion-toggle" aria-pressed="false" title="Disable smooth camera glide transitions">Reduce Motion</button>
+      <button type="button" class="ctrl-btn" id="btn-reset" title="Reset camera to full Morocco overview">Reset</button>
+      <button type="button" class="ctrl-btn" id="btn-2d-mode" title="Switch to lightweight 2D Plotly map">2D View</button>
+    </div>
+  </div>
   <div id="webgl-stage" aria-hidden="false">
     <div class="marker-overlay" id="marker-overlay"></div>
-    <div class="hud-top">
-      <div class="hud-card">
-        <p class="hud-kicker" id="hud-kicker">3D EARTH OBSERVATION SCENE</p>
-        <h2 class="hud-title" id="hud-title">Morocco Coastal Plain to High Atlas</h2>
-        <p class="hud-desc" id="hud-desc">Drag to orbit, scroll to zoom, or click any city beacon to load it in the statistical trial.</p>
-      </div>
-      <div class="hud-controls" role="toolbar" aria-label="3D viewport controls">
-        <button type="button" class="ctrl-btn" id="btn-tour-toggle" aria-pressed="false" title="Start or pause 6-stop geographic tour">▶ Tour</button>
-        <button type="button" class="ctrl-btn" id="btn-tour-prev" title="Previous story camera stop">‹ Prev</button>
-        <button type="button" class="ctrl-btn" id="btn-tour-next" title="Next story camera stop">Next ›</button>
-        <button type="button" class="ctrl-btn" id="btn-grid-toggle" aria-pressed="true" title="Toggle approximate 0.5° × 0.625° MERRA-2 cell boxes">Grid Box</button>
-        <button type="button" class="ctrl-btn" id="btn-motion-toggle" aria-pressed="false" title="Disable smooth camera glide transitions">Reduce Motion</button>
-        <button type="button" class="ctrl-btn" id="btn-reset" title="Reset camera to full Morocco overview">Reset</button>
-        <button type="button" class="ctrl-btn" id="btn-2d-mode" title="Switch to lightweight 2D Plotly map">2D View</button>
-      </div>
-    </div>
   </div>
 
   <div class="fallback-box" id="fallback-box">
@@ -832,11 +825,7 @@
       }
       n.pill.style.display = 'block';
       let x = Math.max(76, Math.min(width - 76, (projected.x * 0.5 + 0.5) * width));
-      let y = Math.max(96, Math.min(height - 18, (-projected.y * 0.5 + 0.5) * height));
-      // Keep pills clear of the top-left HUD summary card
-      if (width > 640 && x < 410 && y < 132) {
-        y = 132;
-      }
+      let y = Math.max(48, Math.min(height - 16, (-projected.y * 0.5 + 0.5) * height));
       // Subtle collision separation so nearby stations (Casablanca & Rabat) stay readable
       for (let pass = 0; pass < 3; pass++) {
         for (let i = 0; i < placed.length; i++) {
@@ -846,7 +835,7 @@
           if (Math.abs(dx) < 152 && Math.abs(dy) < 42) {
             if (x <= p.x) x = Math.max(76, x - 78);
             else x = Math.min(width - 76, x + 78);
-            y = Math.max(96, Math.min(height - 18, dy >= 0 ? y + 22 : y - 22));
+            y = Math.max(48, Math.min(height - 16, dy >= 0 ? y + 22 : y - 22));
           }
         }
       }
